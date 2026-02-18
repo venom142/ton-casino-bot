@@ -24,7 +24,7 @@ if (!BOT_TOKEN || !ADMIN_ID || !TON_WALLET || !TON_API_KEY) {
 const app = express();
 app.use(express.json());
 
-const bot = new TelegramBot(BOT_TOKEN, { polling: true });
+const bot = new TelegramBot(BOT_TOKEN);
 
 const db = new Database("casino.db");
 
