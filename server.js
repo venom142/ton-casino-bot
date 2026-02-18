@@ -306,3 +306,197 @@ function closeWithdraw() {
 
 "better-sqlite3": "^8.4.0"
 
+const express = require("express");
+const Database = require("better-sqlite3");
+const crypto = require("crypto");
+
+const app = express();
+const PORT = process.env.PORT || 3000;
+
+app.use(express.json());
+
+// ================= DATABASE =================
+
+const db = new Database("casino.db");
+
+db.exec(`
+CREATE TABLE IF NOT EXISTS users (
+    id TEXT PRIMARY KEY,
+    balance REAL DEFAULT 10,
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE TABLE IF NOT EXISTS spins (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    user_id TEXT,
+    bet REAL,
+    win REAL,
+    result TEXT,
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+);
+`);
+
+// ================= GAME CONFIG =================
+
+const BET_AMOUNT = 1;
+const JACKPOT_REWARD = 7;
+const symbols = ["🍒","🍋","💎","7️⃣","🔥","⭐"];
+
+// RTP control (house edge)
+const WIN_CHANCE = 0.15; // 15% шанс выигрыша
+
+// ================= HELPERS =================
+
+function getUser(userId) {
+
+    let user = db.prepare("SELECT * FROM users WHERE id = ?").get(userId);
+
+    if (!user) {
+        db.prepare("INSERT INTO users (id) VALUES (?)").run(userId);
+        user = db.prepare("SELECT * FROM users WHERE id = ?").get(userId);
+    }
+
+    return user;
+}
+
+function randomSymbol() {
+    return symbols[Math.floor(Math.random() * symbols.length)];
+}
+
+function generateSpinResult() {
+
+    const winRoll = Math.random();
+
+    if (winRoll < WIN_CHANCE) {
+        const jackpotSymbol = randomSymbol();
+        return {
+            reels: [jackpotSymbol, jackpotSymbol, jackpotSymbol],
+            win: JACKPOT_REWARD
+        };
+    }
+
+    return {
+        reels: [randomSymbol(), randomSymbol(), randomSymbol()],
+        win: 0
+    };
+}
+
+// ================= ROUTES =================
+
+// Root check
+app.get("/", (req, res) => {
+    res.send("VIP TON CASINO SERVER RUNNING 💎");
+});
+
+// Get balance
+app.get("/balance/:userId", (req, res) => {
+
+    const userId = req.params.userId;
+    const user = getUser(userId);
+
+    res.json({
+        balance: user.balance
+    });
+});
+
+// Spin
+app.post("/spin", (req, res) => {
+
+    const { userId } = req.body;
+
+    if (!userId) {
+        return res.status(400).json({ error: "No userId" });
+    }
+
+    let user = getUser(userId);
+
+    if (user.balance < BET_AMOUNT) {
+        return res.json({ error: "Insufficient balance" });
+    }
+
+    // Deduct bet
+    db.prepare("UPDATE users SET balance = balance - ? WHERE id = ?")
+      .run(BET_AMOUNT, userId);
+
+    const result = generateSpinResult();
+
+    // Add win
+    if (result.win > 0) {
+        db.prepare("UPDATE users SET balance = balance + ? WHERE id = ?")
+          .run(result.win, userId);
+    }
+
+    // Log spin
+    db.prepare(`
+        INSERT INTO spins (user_id, bet, win, result)
+        VALUES (?, ?, ?, ?)
+    `).run(
+        userId,
+        BET_AMOUNT,
+        result.win,
+        result.reels.join(" ")
+    );
+
+    const updatedUser = getUser(userId);
+
+    res.json({
+        reels: result.reels,
+        win: result.win,
+        balance: updatedUser.balance
+    });
+});
+
+// Admin stats
+app.get("/admin/stats", (req, res) => {
+
+    const totalUsers = db.prepare("SELECT COUNT(*) as count FROM users").get();
+    const totalSpins = db.prepare("SELECT COUNT(*) as count FROM spins").get();
+    const totalProfit = db.prepare("SELECT SUM(bet - win) as profit FROM spins").get();
+
+    res.json({
+        users: totalUsers.count,
+        spins: totalSpins.count,
+        profit: totalProfit.profit || 0
+    });
+});
+
+// Reset user (dev only)
+app.post("/admin/reset", (req, res) => {
+
+    const { userId } = req.body;
+
+    db.prepare("UPDATE users SET balance = 10 WHERE id = ?")
+      .run(userId);
+
+    res.json({ status: "reset done" });
+});
+
+// ================= SECURITY =================
+
+// Simple rate limit (anti spam)
+const requestMap = {};
+
+app.use((req, res, next) => {
+
+    const ip = req.ip;
+    const now = Date.now();
+
+    if (!requestMap[ip]) {
+        requestMap[ip] = [];
+    }
+
+    requestMap[ip] = requestMap[ip].filter(time => now - time < 10000);
+
+    if (requestMap[ip].length > 50) {
+        return res.status(429).send("Too many requests");
+    }
+
+    requestMap[ip].push(now);
+    next();
+});
+
+// ================= START =================
+
+app.listen(PORT, () => {
+    console.log("VIP TON CASINO SERVER STARTED 💎");
+});
