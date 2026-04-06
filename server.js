@@ -1,207 +1,198 @@
 const express = require('express');
 const axios = require('axios');
-const fs = require('fs'); // Модуль для работы с файлами (наша база данных)
+const fs = require('fs');
 const app = express();
 const PORT = process.env.PORT || 3000;
 
 // ==========================================
-// ⚙️ НАСТРОЙКИ (ТВОИ ДАННЫЕ)
+// ⚙️ НАСТРОЙКИ (VERSION 1.1 - NO XP)
 // ==========================================
 const MY_WALLET = "UQCy28DFTxwwmULQWw_53PvzuwZqj0spCe1vrUgYQtAvGfvn";
 const TON_API_KEY = "fe9429836fd2dfdb009421c6dc389840c9cdadca238477b4e2910250e11fa6d3";
 const DB_FILE = './database.json';
 
-// ==========================================
-// 🗄️ СИСТЕМА БАЗЫ ДАННЫХ (LOCAL DB)
-// ==========================================
 if (!fs.existsSync(DB_FILE)) {
-    fs.writeFileSync(DB_FILE, JSON.stringify({ users: {}, txs: [] }, null, 2));
+    fs.writeFileSync(DB_FILE, JSON.stringify({ users: {}, txs: [] }));
 }
 
-function loadDB() { return JSON.parse(fs.readFileSync(DB_FILE)); }
-function saveDB(data) { fs.writeFileSync(DB_FILE, JSON.stringify(data, null, 2)); }
+function getDB() { return JSON.parse(fs.readFileSync(DB_FILE)); }
+function setDB(data) { fs.writeFileSync(DB_FILE, JSON.stringify(data, null, 2)); }
 
-// ==========================================
-// 📡 СКАНЕР ТРАНЗАКЦИЙ
-// ==========================================
-async function scanBlockchain() {
-    try {
-        const res = await axios.get("https://toncenter.com/api/v2/getTransactions", {
-            params: { address: MY_WALLET, limit: 20 },
-            headers: { 'X-API-Key': TON_API_KEY }
-        });
-        
-        let db = loadDB();
-        const transactions = res.data.result;
-
-        for (let tx of transactions) {
-            const hash = tx.transaction_id.hash;
-            if (db.txs.includes(hash)) continue; // Пропускаем, если уже обработали
-
-            const msg = tx.in_msg.message;
-            if (msg && msg.startsWith("ID_")) {
-                const uid = msg.split("_")[1];
-                const value = parseInt(tx.in_msg.value) / 1e9;
-
-                if (!db.users[uid]) db.users[uid] = { b: 0, spins: 0, wins: 0, joined: new Date() };
-                db.users[uid].b += value;
-                db.txs.push(hash);
-                
-                console.log(`💰 Депозит: +${value} TON для ${uid}`);
-            }
-        }
-        saveDB(db);
-    } catch (e) { console.log("Ошибка сканера платежей"); }
-}
-setInterval(scanBlockchain, 20000);
-
-// ==========================================
-// 🎮 API ИГРЫ И ЛИЧНОГО КАБИНЕТА
-// ==========================================
 app.use(express.json());
 
-app.post('/api/user-data', (req, res) => {
+// СКАНЕР ПЛАТЕЖЕЙ
+async function scan() {
+    try {
+        const res = await axios.get("https://toncenter.com/api/v2/getTransactions", {
+            params: { address: MY_WALLET, limit: 10 },
+            headers: { 'X-API-Key': TON_API_KEY }
+        });
+        let db = getDB();
+        res.data.result.forEach(tx => {
+            const h = tx.transaction_id.hash;
+            const m = tx.in_msg.message;
+            if (m && m.startsWith("ID_") && !db.txs.includes(h)) {
+                const uid = m.split("_")[1];
+                const val = parseInt(tx.in_msg.value) / 1e9;
+                if(!db.users[uid]) db.users[uid] = { b: 0.1, spins: 0, wins: 0 };
+                db.users[uid].b += val;
+                db.txs.push(h);
+            }
+        });
+        setDB(db);
+    } catch (e) {}
+}
+setInterval(scan, 15000);
+
+// API
+app.post('/api/get-user', (req, res) => {
     const { uid } = req.body;
-    let db = loadDB();
-    if (!db.users[uid]) db.users[uid] = { b: 0.5, spins: 0, wins: 0, joined: new Date() };
+    let db = getDB();
+    if (!db.users[uid]) {
+        db.users[uid] = { b: 0.1, spins: 0, wins: 0 }; 
+        setDB(db);
+    }
     res.json(db.users[uid]);
 });
 
-app.post('/api/spin', (req, res) => {
-    const { uid, bet } = req.body;
-    let db = loadDB();
-    let user = db.users[uid];
+app.post('/api/play', (req, res) => {
+    const { uid } = req.body;
+    let db = getDB();
+    let u = db.users[uid];
+    if (!u || u.b < 0.01) return res.json({ err: "Недостаточно баланса" });
 
-    if (!user || user.b < bet) return res.json({ error: "Недостаточно баланса" });
-
-    user.b -= bet;
-    user.spins += 1;
-
-    const symbols = ['💎', '💰', '7️⃣', '🍒', '⭐'];
-    const r = [
-        symbols[Math.floor(Math.random() * 5)],
-        symbols[Math.floor(Math.random() * 5)],
-        symbols[Math.floor(Math.random() * 5)]
-    ];
-
+    u.b -= 0.01; 
+    u.spins++;
+    const s = ['💎','💰','7️⃣','🍒','⭐'];
+    const r = [s[Math.floor(Math.random()*5)], s[Math.floor(Math.random()*5)], s[Math.floor(Math.random()*5)]];
     let win = 0;
-    if (r[0] === r[1] && r[1] === r[2]) {
-        win = bet * 10;
-        user.b += win;
-        user.wins += 1;
-    }
-
-    saveDB(db);
-    res.json({ reels: r, win: win, newBal: user.b });
+    if (r[0] === r[1] && r[1] === r[2]) { win = 0.5; u.b += win; u.wins++; }
+    
+    setDB(db);
+    res.json({ reels: r, win, newBal: u.b });
 });
 
-// ==========================================
-// 📱 ИНТЕРФЕЙС (HTML)
-// ==========================================
+// ИНТЕРФЕЙС
 app.get('/', (req, res) => {
     res.send(`
 <!DOCTYPE html>
 <html>
 <head>
-    <meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
     <script src="https://telegram.org/js/telegram-web-app.js"></script>
+    <title>VIP TON XOT V1.1</title>
     <style>
-        body { background: #040712; color: white; font-family: sans-serif; margin: 0; padding: 20px; text-align: center; }
-        .nav { display: flex; justify-content: space-around; margin-bottom: 20px; background: #0a1125; padding: 10px; border-radius: 15px; }
-        .nav-item { cursor: pointer; opacity: 0.7; font-size: 14px; }
-        .active { opacity: 1; border-bottom: 2px solid #00d4ff; }
-        
-        .card { background: linear-gradient(145deg, #0a1125, #060d1f); border-radius: 25px; padding: 25px; border: 1px solid #1a2c4d; }
-        .bal { font-size: 32px; color: #00d4ff; font-weight: 900; margin: 10px 0; }
-        
-        .slots { display: flex; gap: 10px; justify-content: center; margin: 30px 0; }
-        .reel { width: 70px; height: 90px; background: #000; border-radius: 15px; font-size: 40px; display: flex; align-items: center; justify-content: center; border: 2px solid #1a2c4d; }
-        
-        button { background: #00d4ff; color: #000; border: none; padding: 15px 40px; border-radius: 50px; font-size: 20px; font-weight: bold; width: 100%; cursor: pointer; }
-        .stats-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-top: 20px; text-align: left; }
-        .stat-box { background: #0f1a36; padding: 15px; border-radius: 15px; }
+        body { background: #050a14; color: white; font-family: sans-serif; text-align: center; margin: 0; padding: 10px; overflow: hidden; }
+        .card { background: rgba(10, 17, 37, 0.9); padding: 25px; border-radius: 30px; border: 1px solid #00d4ff; box-shadow: 0 0 20px #00d4ff33; }
+        .bal { font-size: 45px; color: #00d4ff; font-weight: bold; text-shadow: 0 0 10px #00d4ffaa; }
+        .slots { display: flex; justify-content: center; gap: 10px; margin: 25px 0; }
+        .reel { width: 85px; height: 110px; background: #000; border-radius: 20px; font-size: 55px; display: flex; align-items: center; justify-content: center; border: 2px solid #1a2c4d; }
+        .btn-spin { background: linear-gradient(135deg, #0088cc, #00d4ff); border: none; color: white; padding: 22px; width: 100%; border-radius: 40px; font-size: 26px; font-weight: bold; cursor: pointer; transition: 0.1s; }
+        .btn-spin:active { transform: scale(0.95); }
+        .btn-dep { background: #28a745; border: none; color: white; padding: 15px; width: 100%; border-radius: 20px; margin-top: 20px; font-weight: bold; opacity: 0.9; }
+        .blur { animation: b 0.1s infinite; }
+        @keyframes b { 0% { filter: blur(0px); transform: translateY(-2px); } 50% { filter: blur(6px); } 100% { filter: blur(0px); transform: translateY(2px); } }
         .hidden { display: none; }
+        .nav { display: flex; justify-content: space-around; margin-bottom: 20px; font-weight: bold; font-size: 14px; color: #00d4ff; }
     </style>
 </head>
 <body>
+    <audio id="bgMusic" loop>
+        <source src="https://www.soundhelix.com/examples/mp3/SoundHelix-Song-8.mp3" type="audio/mpeg">
+    </audio>
+    <audio id="winSound" src="https://actions.google.com/sounds/v1/alarms/beep_short.ogg"></audio>
+
     <div class="nav">
-        <div id="tab1" class="nav-item active" onclick="showTab(1)">🎰 ИГРА</div>
-        <div id="tab2" class="nav-item" onclick="showTab(2)">👤 ПРОФИЛЬ</div>
+        <span onclick="tab(1)" style="border-bottom: 2px solid">ИГРА</span>
+        <span onclick="tab(2)">ПРОФИЛЬ</span>
     </div>
 
-    <div id="page1">
-        <div class="card">
-            <div style="font-size: 12px; opacity: 0.5;">ВАШ БАЛАНС</div>
-            <div id="bal" class="bal">0.00</div>
-            <div class="slots"><div id="r1" class="reel">💎</div><div id="r2" class="reel">💎</div><div id="r3" class="reel">💎</div></div>
-            <button onclick="spin()">SPIN (0.1 TON)</button>
-            <button style="background:#28a745; color:white; margin-top:15px; font-size:14px;" onclick="deposit()">+ ПОПОЛНИТЬ</button>
-        </div>
+    <div id="p1" class="card">
+        <div style="font-size: 11px; opacity: 0.6; letter-spacing: 1px;">ВАШ БАЛАНС TON</div>
+        <div class="bal" id="balDisplay">0.10</div>
+        <div class="slots"><div id="r1" class="reel">💎</div><div id="r2" class="reel">💎</div><div id="r3" class="reel">💎</div></div>
+        <button id="sBtn" class="btn-spin" onclick="play()">SPIN</button>
+        <button class="btn-dep" onclick="dep()">+ ПОПОЛНИТЬ</button>
     </div>
 
-    <div id="page2" class="hidden">
-        <div class="card">
-            <h2>ЛИЧНЫЙ КАБИНЕТ</h2>
-            <div class="stats-grid">
-                <div class="stat-box">💰 Баланс:<br><b id="p-bal">0</b></div>
-                <div class="stat-box">🎰 Игр:<br><b id="p-spins">0</b></div>
-                <div class="stat-box">🏆 Побед:<br><b id="p-wins">0</b></div>
-                <div class="stat-box">🆔 Ваш ID:<br><b id="p-id">0</b></div>
-            </div>
-            <p style="font-size:10px; opacity:0.4; margin-top:20px;">Дата регистрации: <span id="p-date">-</span></p>
+    <div id="p2" class="card hidden">
+        <h3 style="color: #00d4ff">ЛИЧНЫЙ КАБИНЕТ</h3>
+        <div style="text-align: left; padding: 10px; line-height: 2;">
+            <div>🆔 ID: <span id="myId">---</span></div>
+            <div>🎰 ВСЕГО ИГР: <span id="mySpins">0</span></div>
+            <div>🏆 ПОБЕД: <span id="myWins">0</span></div>
         </div>
+        <button class="btn-dep" style="background: #444" onclick="tab(1)">НАЗАД</button>
     </div>
 
     <script>
         const tg = window.Telegram.WebApp;
-        const uid = tg.initDataUnsafe.user?.id || "local_dev";
-        
-        async function loadUser() {
-            const r = await fetch('/api/user-data', { method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({uid}) });
+        tg.expand();
+        const uid = tg.initDataUnsafe?.user?.id || "USER";
+        const bg = document.getElementById('bgMusic');
+
+        // Включение музыки после первого касания экрана
+        window.addEventListener('touchstart', () => { if(bg.paused) bg.play(); }, {once: true});
+        window.addEventListener('click', () => { if(bg.paused) bg.play(); }, {once: true});
+
+        async function load() {
+            const r = await fetch('/api/get-user', { method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({uid}) });
             const d = await r.json();
-            document.getElementById('bal').innerText = d.b.toFixed(2);
-            document.getElementById('p-bal').innerText = d.b.toFixed(2) + " TON";
-            document.getElementById('p-spins').innerText = d.spins;
-            document.getElementById('p-wins').innerText = d.wins;
-            document.getElementById('p-id').innerText = uid;
-            document.getElementById('p-date').innerText = d.joined;
+            document.getElementById('balDisplay').innerText = d.b.toFixed(2);
+            document.getElementById('myId').innerText = uid;
+            document.getElementById('mySpins').innerText = d.spins;
+            document.getElementById('myWins').innerText = d.wins;
         }
 
-        function showTab(n) {
-            document.getElementById('page1').classList.toggle('hidden', n !== 1);
-            document.getElementById('page2').classList.toggle('hidden', n !== 2);
-            document.getElementById('tab1').classList.toggle('active', n === 1);
-            document.getElementById('tab2').classList.toggle('active', n === 2);
-            if(n === 2) loadUser();
-        }
-
-        async function spin() {
+        async function play() {
+            const btn = document.getElementById('sBtn');
+            btn.disabled = true;
+            const reels = [document.getElementById('r1'), document.getElementById('r2'), document.getElementById('r3')];
+            reels.forEach(r => r.classList.add('blur'));
+            
             tg.HapticFeedback.impactOccurred('medium');
-            const r = await fetch('/api/spin', { method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({uid, bet: 0.1}) });
+
+            const r = await fetch('/api/play', { method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({uid}) });
             const d = await r.json();
-            if(d.error) return tg.showAlert(d.error);
 
-            document.getElementById('r1').innerText = d.reels[0];
-            document.getElementById('r2').innerText = d.reels[1];
-            document.getElementById('r3').innerText = d.reels[2];
-            document.getElementById('bal').innerText = d.newBal.toFixed(2);
-
-            if(d.win > 0) {
-                tg.showAlert("ВЫИГРЫШ: " + d.win + " TON!");
-                tg.HapticFeedback.notificationOccurred('success');
+            if(d.err) {
+                reels.forEach(r => r.classList.remove('blur'));
+                btn.disabled = false;
+                return tg.showAlert(d.err);
             }
+
+            setTimeout(() => {
+                reels.forEach((r, i) => {
+                    r.classList.remove('blur');
+                    r.innerText = d.reels[i];
+                });
+                document.getElementById('balDisplay').innerText = d.newBal.toFixed(2);
+                if(d.win > 0) {
+                    document.getElementById('winSound').play();
+                    tg.HapticFeedback.notificationOccurred('success');
+                    tg.showAlert("ВЫИГРЫШ +0.50 TON!");
+                }
+                btn.disabled = false;
+            }, 1200);
         }
 
-        function deposit() {
+        function dep() {
             const comment = "ID_" + uid;
-            tg.openLink("ton://transfer/${MY_WALLET}?amount=1000000000&text=" + comment);
+            const url = "ton://transfer/${MY_WALLET}?amount=1000000000&text=" + comment;
+            tg.openLink(url);
         }
 
-        loadUser();
+        function tab(n) {
+            document.getElementById('p1').classList.toggle('hidden', n === 2);
+            document.getElementById('p2').classList.toggle('hidden', n === 1);
+            if(n === 2) load();
+        }
+
+        load();
     </script>
 </body>
 </html>
     `);
 });
 
-app.listen(PORT, () => console.log(`🚀 Сервер запущен на порту ${PORT}`));
+app.listen(PORT, () => console.log("VIP TON XOT V1.1 LIVE"));
