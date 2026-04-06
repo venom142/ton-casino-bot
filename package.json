@@ -1,11 +1,13 @@
 {
-  "name": "vip-ton-casino",
+  "name": "ton-casino-final",
   "version": "1.0.0",
+  "description": "Real TON Casino",
   "main": "server.js",
+  "dependencies": {
+    "express": "^4.18.2",
+    "axios": "^1.6.0"
+  },
   "scripts": {
     "start": "node server.js"
-
-    "dependencies": {
-  "express": "^4.18.2",
-  "better-sqlite3": "^8.4.0"
+  }
 }
