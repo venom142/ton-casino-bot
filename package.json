@@ -1,13 +1,18 @@
 {
-  "name": "ton-casino-final",
+  "name": "ton-casino",
   "version": "1.0.0",
-  "description": "Real TON Casino",
+  "description": "TON Casino with MongoDB",
   "main": "server.js",
-  "dependencies": {
-    "express": "^4.18.2",
-    "axios": "^1.6.0"
-  },
   "scripts": {
     "start": "node server.js"
+  },
+  "dependencies": {
+    "express": "^4.18.2",
+    "axios": "^1.6.2",
+    "node-telegram-bot-api": "^0.64.0",
+    "mongoose": "^8.2.0"
+  },
+  "engines": {
+    "node": ">=18.0.0"
   }
 }
