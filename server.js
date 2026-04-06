@@ -1,502 +1,207 @@
-<!DOCTYPE html>
-<html lang="ru">
-<head>
-<meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>VIP TON CASINO</title>
-
-<style>
-
-/* ===== GLOBAL ===== */
-
-* {
-  box-sizing: border-box;
-  margin: 0;
-  padding: 0;
-}
-
-body {
-  background: radial-gradient(circle at top, #001f3f, #000814 70%);
-  font-family: 'Segoe UI', sans-serif;
-  color: white;
-  overflow-x: hidden;
-}
-
-/* ===== BACKGROUND GLOW ===== */
-
-body::before {
-  content: "";
-  position: fixed;
-  top: -200px;
-  left: 50%;
-  transform: translateX(-50%);
-  width: 600px;
-  height: 600px;
-  background: radial-gradient(circle, #00bfff55, transparent 70%);
-  filter: blur(120px);
-  z-index: -1;
-}
-
-/* ===== HEADER ===== */
-
-.header {
-  padding: 25px 15px;
-  text-align: center;
-}
-
-.logo {
-  font-size: 30px;
-  font-weight: bold;
-  color: #00bfff;
-  text-shadow: 0 0 25px #00bfff;
-}
-
-/* ===== HUD ===== */
-
-.hud {
-  width: 90%;
-  margin: 20px auto;
-  background: rgba(0, 0, 0, 0.6);
-  border: 2px solid #00bfff;
-  border-radius: 20px;
-  padding: 20px;
-  box-shadow: 0 0 25px #00bfff55;
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-}
-
-.balance {
-  font-size: 20px;
-}
-
-.balance span {
-  color: #00ffcc;
-  font-weight: bold;
-}
-
-.level {
-  font-size: 14px;
-  opacity: 0.8;
-}
-
-/* ===== SLOT MACHINE ===== */
-
-.slot-container {
-  margin: 40px auto;
-  width: 90%;
-  padding: 30px;
-  background: rgba(0, 0, 0, 0.7);
-  border-radius: 25px;
-  border: 2px solid #00bfff;
-  box-shadow: 0 0 35px #00bfff55;
-  text-align: center;
-}
-
-.reels {
-  font-size: 55px;
-  margin: 25px 0;
-  letter-spacing: 15px;
-  min-height: 80px;
-}
-
-.spin-animation {
-  animation: spinAnim 0.6s linear infinite;
-}
-
-@keyframes spinAnim {
-  0% { transform: translateY(0px); }
-  50% { transform: translateY(-8px); }
-  100% { transform: translateY(0px); }
-}
-
-/* ===== BUTTONS ===== */
-
-.buttons {
-  width: 90%;
-  margin: 20px auto;
-}
-
-.btn {
-  width: 100%;
-  padding: 18px;
-  margin-bottom: 15px;
-  border-radius: 20px;
-  border: none;
-  font-size: 18px;
-  font-weight: bold;
-  cursor: pointer;
-  transition: 0.3s;
-}
-
-.spin-btn {
-  background: linear-gradient(90deg, #00bfff, #0077ff);
-  color: white;
-  box-shadow: 0 0 20px #00bfff;
-}
-
-.spin-btn:hover {
-  transform: scale(1.05);
-  box-shadow: 0 0 40px #00bfff;
-}
-
-.deposit-btn {
-  background: linear-gradient(90deg, #00ff99, #00cc66);
-}
-
-.withdraw-btn {
-  background: linear-gradient(90deg, #ff0066, #cc0033);
-}
-
-/* ===== MODAL ===== */
-
-.modal {
-  position: fixed;
-  bottom: -100%;
-  left: 0;
-  width: 100%;
-  background: #001f3f;
-  border-top-left-radius: 25px;
-  border-top-right-radius: 25px;
-  padding: 25px;
-  transition: 0.4s;
-  box-shadow: 0 -10px 40px #000;
-}
-
-.modal.active {
-  bottom: 0;
-}
-
-.modal h2 {
-  margin-bottom: 15px;
-}
-
-.modal button {
-  margin-top: 15px;
-}
-
-/* ===== FOOTER ===== */
-
-.footer {
-  text-align: center;
-  margin: 40px 0;
-  font-size: 12px;
-  opacity: 0.6;
-}
-
-</style>
-</head>
-
-<body>
-
-<div class="header">
-  <div class="logo">💎 VIP TON CASINO</div>
-</div>
-
-<div class="hud">
-  <div class="balance">
-    Баланс: <span id="balance">0</span> TON
-  </div>
-  <div class="level">
-    LEVEL 1
-  </div>
-</div>
-
-<div class="slot-container">
-  <div class="reels" id="reels">
-    🎰 🎰 🎰
-  </div>
-</div>
-
-<div class="buttons">
-  <button class="btn spin-btn" onclick="spin()">🎰 КРУТИТЬ</button>
-  <button class="btn deposit-btn" onclick="openDeposit()">💰 ДЕПОЗИТ</button>
-  <button class="btn withdraw-btn" onclick="openWithdraw()">💸 ВЫВОД</button>
-</div>
-
-<div class="modal" id="depositModal">
-  <h2>Пополнение TON</h2>
-  <p>Отправь TON на адрес:</p>
-  <p><b>UQxxxxxxxxxxxxxxxx</b></p>
-  <button class="btn spin-btn" onclick="closeDeposit()">Закрыть</button>
-</div>
-
-<div class="modal" id="withdrawModal">
-  <h2>Вывод TON</h2>
-  <p>Функция скоро будет активна 💎</p>
-  <button class="btn spin-btn" onclick="closeWithdraw()">Закрыть</button>
-</div>
-
-<div class="footer">
-  Powered by TON Blockchain
-</div>
-
-<script>
-
-let balance = 10;
-let spinning = false;
-
-const symbols = ["🍒","🍋","💎","7️⃣","🔥","⭐"];
-
-function spin() {
-
-  if (spinning) return;
-
-  if (balance <= 0) {
-    alert("Недостаточно TON");
-    return;
-  }
-
-  spinning = true;
-  balance -= 1;
-  updateBalance();
-
-  const reels = document.getElementById("reels");
-  reels.classList.add("spin-animation");
-
-  setTimeout(() => {
-
-    reels.classList.remove("spin-animation");
-
-    let s1 = randomSymbol();
-    let s2 = randomSymbol();
-    let s3 = randomSymbol();
-
-    reels.innerText = s1 + "  " + s2 + "  " + s3;
-
-    if (s1 === s2 && s2 === s3) {
-      balance += 7;
-      alert("JACKPOT 💎 +7 TON");
-    }
-
-    updateBalance();
-    spinning = false;
-
-  }, 1500);
-}
-
-function randomSymbol() {
-  return symbols[Math.floor(Math.random() * symbols.length)];
-}
-
-function updateBalance() {
-  document.getElementById("balance").innerText = balance;
-}
-
-function openDeposit() {
-  document.getElementById("depositModal").classList.add("active");
-}
-
-function closeDeposit() {
-  document.getElementById("depositModal").classList.remove("active");
-}
-
-function openWithdraw() {
-  document.getElementById("withdrawModal").classList.add("active");
-}
-
-function closeWithdraw() {
-  document.getElementById("withdrawModal").classList.remove("active");
-}
-
-</script>
-
-</body>
-</html>
-
-"better-sqlite3": "^8.4.0"
-
-const express = require("express");
-const Database = require("better-sqlite3");
-const crypto = require("crypto");
-
+const express = require('express');
+const axios = require('axios');
+const fs = require('fs'); // Модуль для работы с файлами (наша база данных)
 const app = express();
 const PORT = process.env.PORT || 3000;
 
+// ==========================================
+// ⚙️ НАСТРОЙКИ (ТВОИ ДАННЫЕ)
+// ==========================================
+const MY_WALLET = "UQCy28DFTxwwmULQWw_53PvzuwZqj0spCe1vrUgYQtAvGfvn";
+const TON_API_KEY = "fe9429836fd2dfdb009421c6dc389840c9cdadca238477b4e2910250e11fa6d3";
+const DB_FILE = './database.json';
+
+// ==========================================
+// 🗄️ СИСТЕМА БАЗЫ ДАННЫХ (LOCAL DB)
+// ==========================================
+if (!fs.existsSync(DB_FILE)) {
+    fs.writeFileSync(DB_FILE, JSON.stringify({ users: {}, txs: [] }, null, 2));
+}
+
+function loadDB() { return JSON.parse(fs.readFileSync(DB_FILE)); }
+function saveDB(data) { fs.writeFileSync(DB_FILE, JSON.stringify(data, null, 2)); }
+
+// ==========================================
+// 📡 СКАНЕР ТРАНЗАКЦИЙ
+// ==========================================
+async function scanBlockchain() {
+    try {
+        const res = await axios.get("https://toncenter.com/api/v2/getTransactions", {
+            params: { address: MY_WALLET, limit: 20 },
+            headers: { 'X-API-Key': TON_API_KEY }
+        });
+        
+        let db = loadDB();
+        const transactions = res.data.result;
+
+        for (let tx of transactions) {
+            const hash = tx.transaction_id.hash;
+            if (db.txs.includes(hash)) continue; // Пропускаем, если уже обработали
+
+            const msg = tx.in_msg.message;
+            if (msg && msg.startsWith("ID_")) {
+                const uid = msg.split("_")[1];
+                const value = parseInt(tx.in_msg.value) / 1e9;
+
+                if (!db.users[uid]) db.users[uid] = { b: 0, spins: 0, wins: 0, joined: new Date() };
+                db.users[uid].b += value;
+                db.txs.push(hash);
+                
+                console.log(`💰 Депозит: +${value} TON для ${uid}`);
+            }
+        }
+        saveDB(db);
+    } catch (e) { console.log("Ошибка сканера платежей"); }
+}
+setInterval(scanBlockchain, 20000);
+
+// ==========================================
+// 🎮 API ИГРЫ И ЛИЧНОГО КАБИНЕТА
+// ==========================================
 app.use(express.json());
 
-// ================= DATABASE =================
-
-const db = new Database("casino.db");
-
-db.exec(`
-CREATE TABLE IF NOT EXISTS users (
-    id TEXT PRIMARY KEY,
-    balance REAL DEFAULT 10,
-    created_at DATETIME DEFAULT CURRENT_TIMESTAMP
-);
-
-CREATE TABLE IF NOT EXISTS spins (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    user_id TEXT,
-    bet REAL,
-    win REAL,
-    result TEXT,
-    created_at DATETIME DEFAULT CURRENT_TIMESTAMP
-);
-`);
-
-// ================= GAME CONFIG =================
-
-const BET_AMOUNT = 1;
-const JACKPOT_REWARD = 7;
-const symbols = ["🍒","🍋","💎","7️⃣","🔥","⭐"];
-
-// RTP control (house edge)
-const WIN_CHANCE = 0.15; // 15% шанс выигрыша
-
-// ================= HELPERS =================
-
-function getUser(userId) {
-
-    let user = db.prepare("SELECT * FROM users WHERE id = ?").get(userId);
-
-    if (!user) {
-        db.prepare("INSERT INTO users (id) VALUES (?)").run(userId);
-        user = db.prepare("SELECT * FROM users WHERE id = ?").get(userId);
-    }
-
-    return user;
-}
-
-function randomSymbol() {
-    return symbols[Math.floor(Math.random() * symbols.length)];
-}
-
-function generateSpinResult() {
-
-    const winRoll = Math.random();
-
-    if (winRoll < WIN_CHANCE) {
-        const jackpotSymbol = randomSymbol();
-        return {
-            reels: [jackpotSymbol, jackpotSymbol, jackpotSymbol],
-            win: JACKPOT_REWARD
-        };
-    }
-
-    return {
-        reels: [randomSymbol(), randomSymbol(), randomSymbol()],
-        win: 0
-    };
-}
-
-// ================= ROUTES =================
-
-// Root check
-app.get("/", (req, res) => {
-    res.send("VIP TON CASINO SERVER RUNNING 💎");
+app.post('/api/user-data', (req, res) => {
+    const { uid } = req.body;
+    let db = loadDB();
+    if (!db.users[uid]) db.users[uid] = { b: 0.5, spins: 0, wins: 0, joined: new Date() };
+    res.json(db.users[uid]);
 });
 
-// Get balance
-app.get("/balance/:userId", (req, res) => {
+app.post('/api/spin', (req, res) => {
+    const { uid, bet } = req.body;
+    let db = loadDB();
+    let user = db.users[uid];
 
-    const userId = req.params.userId;
-    const user = getUser(userId);
+    if (!user || user.b < bet) return res.json({ error: "Недостаточно баланса" });
 
-    res.json({
-        balance: user.balance
-    });
-});
+    user.b -= bet;
+    user.spins += 1;
 
-// Spin
-app.post("/spin", (req, res) => {
+    const symbols = ['💎', '💰', '7️⃣', '🍒', '⭐'];
+    const r = [
+        symbols[Math.floor(Math.random() * 5)],
+        symbols[Math.floor(Math.random() * 5)],
+        symbols[Math.floor(Math.random() * 5)]
+    ];
 
-    const { userId } = req.body;
-
-    if (!userId) {
-        return res.status(400).json({ error: "No userId" });
+    let win = 0;
+    if (r[0] === r[1] && r[1] === r[2]) {
+        win = bet * 10;
+        user.b += win;
+        user.wins += 1;
     }
 
-    let user = getUser(userId);
-
-    if (user.balance < BET_AMOUNT) {
-        return res.json({ error: "Insufficient balance" });
-    }
-
-    // Deduct bet
-    db.prepare("UPDATE users SET balance = balance - ? WHERE id = ?")
-      .run(BET_AMOUNT, userId);
-
-    const result = generateSpinResult();
-
-    // Add win
-    if (result.win > 0) {
-        db.prepare("UPDATE users SET balance = balance + ? WHERE id = ?")
-          .run(result.win, userId);
-    }
-
-    // Log spin
-    db.prepare(`
-        INSERT INTO spins (user_id, bet, win, result)
-        VALUES (?, ?, ?, ?)
-    `).run(
-        userId,
-        BET_AMOUNT,
-        result.win,
-        result.reels.join(" ")
-    );
-
-    const updatedUser = getUser(userId);
-
-    res.json({
-        reels: result.reels,
-        win: result.win,
-        balance: updatedUser.balance
-    });
+    saveDB(db);
+    res.json({ reels: r, win: win, newBal: user.b });
 });
 
-// Admin stats
-app.get("/admin/stats", (req, res) => {
+// ==========================================
+// 📱 ИНТЕРФЕЙС (HTML)
+// ==========================================
+app.get('/', (req, res) => {
+    res.send(`
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <script src="https://telegram.org/js/telegram-web-app.js"></script>
+    <style>
+        body { background: #040712; color: white; font-family: sans-serif; margin: 0; padding: 20px; text-align: center; }
+        .nav { display: flex; justify-content: space-around; margin-bottom: 20px; background: #0a1125; padding: 10px; border-radius: 15px; }
+        .nav-item { cursor: pointer; opacity: 0.7; font-size: 14px; }
+        .active { opacity: 1; border-bottom: 2px solid #00d4ff; }
+        
+        .card { background: linear-gradient(145deg, #0a1125, #060d1f); border-radius: 25px; padding: 25px; border: 1px solid #1a2c4d; }
+        .bal { font-size: 32px; color: #00d4ff; font-weight: 900; margin: 10px 0; }
+        
+        .slots { display: flex; gap: 10px; justify-content: center; margin: 30px 0; }
+        .reel { width: 70px; height: 90px; background: #000; border-radius: 15px; font-size: 40px; display: flex; align-items: center; justify-content: center; border: 2px solid #1a2c4d; }
+        
+        button { background: #00d4ff; color: #000; border: none; padding: 15px 40px; border-radius: 50px; font-size: 20px; font-weight: bold; width: 100%; cursor: pointer; }
+        .stats-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-top: 20px; text-align: left; }
+        .stat-box { background: #0f1a36; padding: 15px; border-radius: 15px; }
+        .hidden { display: none; }
+    </style>
+</head>
+<body>
+    <div class="nav">
+        <div id="tab1" class="nav-item active" onclick="showTab(1)">🎰 ИГРА</div>
+        <div id="tab2" class="nav-item" onclick="showTab(2)">👤 ПРОФИЛЬ</div>
+    </div>
 
-    const totalUsers = db.prepare("SELECT COUNT(*) as count FROM users").get();
-    const totalSpins = db.prepare("SELECT COUNT(*) as count FROM spins").get();
-    const totalProfit = db.prepare("SELECT SUM(bet - win) as profit FROM spins").get();
+    <div id="page1">
+        <div class="card">
+            <div style="font-size: 12px; opacity: 0.5;">ВАШ БАЛАНС</div>
+            <div id="bal" class="bal">0.00</div>
+            <div class="slots"><div id="r1" class="reel">💎</div><div id="r2" class="reel">💎</div><div id="r3" class="reel">💎</div></div>
+            <button onclick="spin()">SPIN (0.1 TON)</button>
+            <button style="background:#28a745; color:white; margin-top:15px; font-size:14px;" onclick="deposit()">+ ПОПОЛНИТЬ</button>
+        </div>
+    </div>
 
-    res.json({
-        users: totalUsers.count,
-        spins: totalSpins.count,
-        profit: totalProfit.profit || 0
-    });
+    <div id="page2" class="hidden">
+        <div class="card">
+            <h2>ЛИЧНЫЙ КАБИНЕТ</h2>
+            <div class="stats-grid">
+                <div class="stat-box">💰 Баланс:<br><b id="p-bal">0</b></div>
+                <div class="stat-box">🎰 Игр:<br><b id="p-spins">0</b></div>
+                <div class="stat-box">🏆 Побед:<br><b id="p-wins">0</b></div>
+                <div class="stat-box">🆔 Ваш ID:<br><b id="p-id">0</b></div>
+            </div>
+            <p style="font-size:10px; opacity:0.4; margin-top:20px;">Дата регистрации: <span id="p-date">-</span></p>
+        </div>
+    </div>
+
+    <script>
+        const tg = window.Telegram.WebApp;
+        const uid = tg.initDataUnsafe.user?.id || "local_dev";
+        
+        async function loadUser() {
+            const r = await fetch('/api/user-data', { method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({uid}) });
+            const d = await r.json();
+            document.getElementById('bal').innerText = d.b.toFixed(2);
+            document.getElementById('p-bal').innerText = d.b.toFixed(2) + " TON";
+            document.getElementById('p-spins').innerText = d.spins;
+            document.getElementById('p-wins').innerText = d.wins;
+            document.getElementById('p-id').innerText = uid;
+            document.getElementById('p-date').innerText = d.joined;
+        }
+
+        function showTab(n) {
+            document.getElementById('page1').classList.toggle('hidden', n !== 1);
+            document.getElementById('page2').classList.toggle('hidden', n !== 2);
+            document.getElementById('tab1').classList.toggle('active', n === 1);
+            document.getElementById('tab2').classList.toggle('active', n === 2);
+            if(n === 2) loadUser();
+        }
+
+        async function spin() {
+            tg.HapticFeedback.impactOccurred('medium');
+            const r = await fetch('/api/spin', { method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({uid, bet: 0.1}) });
+            const d = await r.json();
+            if(d.error) return tg.showAlert(d.error);
+
+            document.getElementById('r1').innerText = d.reels[0];
+            document.getElementById('r2').innerText = d.reels[1];
+            document.getElementById('r3').innerText = d.reels[2];
+            document.getElementById('bal').innerText = d.newBal.toFixed(2);
+
+            if(d.win > 0) {
+                tg.showAlert("ВЫИГРЫШ: " + d.win + " TON!");
+                tg.HapticFeedback.notificationOccurred('success');
+            }
+        }
+
+        function deposit() {
+            const comment = "ID_" + uid;
+            tg.openLink("ton://transfer/${MY_WALLET}?amount=1000000000&text=" + comment);
+        }
+
+        loadUser();
+    </script>
+</body>
+</html>
+    `);
 });
 
-// Reset user (dev only)
-app.post("/admin/reset", (req, res) => {
-
-    const { userId } = req.body;
-
-    db.prepare("UPDATE users SET balance = 10 WHERE id = ?")
-      .run(userId);
-
-    res.json({ status: "reset done" });
-});
-
-// ================= SECURITY =================
-
-// Simple rate limit (anti spam)
-const requestMap = {};
-
-app.use((req, res, next) => {
-
-    const ip = req.ip;
-    const now = Date.now();
-
-    if (!requestMap[ip]) {
-        requestMap[ip] = [];
-    }
-
-    requestMap[ip] = requestMap[ip].filter(time => now - time < 10000);
-
-    if (requestMap[ip].length > 50) {
-        return res.status(429).send("Too many requests");
-    }
-
-    requestMap[ip].push(now);
-    next();
-});
-
-// ================= START =================
-
-app.listen(PORT, () => {
-    console.log("VIP TON CASINO SERVER STARTED 💎");
-});
+app.listen(PORT, () => console.log(`🚀 Сервер запущен на порту ${PORT}`));
