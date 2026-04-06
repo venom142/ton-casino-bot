@@ -6,11 +6,11 @@ const TelegramBot = require('node-telegram-bot-api');
 const app = express();
 const PORT = process.env.PORT || 3000;
 
-// === НАСТРОЙКИ ===
+// === НАСТРОЙКИ (Берем из Render Environment) ===
 const MY_WALLET = "UQCy28DFTxwwmULQWw_53PvzuwZqj0spCe1vrUgYQtAvGfvn";
 const BOT_TOKEN = process.env.BOT_TOKEN; 
 const URL_APP = "https://ton-casino-bot.onrender.com"; 
-const SUPPORT_USER = "твой_логин"; // Твой ник без @
+const SUPPORT_USER = "твой_логин"; 
 
 const bot = new TelegramBot(BOT_TOKEN, { polling: true });
 const DB_FILE = './database.json';
@@ -22,10 +22,10 @@ function setDB(data) { fs.writeFileSync(DB_FILE, JSON.stringify(data, null, 2));
 app.use(express.json());
 
 bot.onText(/\/start/, (msg) => {
-    bot.sendMessage(msg.chat.id, "💎 **VIP TON ХОТ ТАП 1.0**\n\nИспытай свою удачу!", {
+    bot.sendMessage(msg.chat.id, "💎 **VIP TON ХОТ ТАП 1.0**", {
         reply_markup: { inline_keyboard: [[{ text: "🎰 ИГРАТЬ", web_app: { url: URL_APP } }]] },
         parse_mode: 'Markdown'
-    }).catch(e => console.log("Bot Error"));
+    });
 });
 
 app.post('/api/init', (req, res) => {
@@ -68,19 +68,20 @@ app.get('/', (req, res) => {
         .nav { display: flex; justify-content: space-around; background: #0a1125; padding: 12px; border-radius: 20px; margin-bottom: 20px; border: 1px solid #00d4ff33; }
         .nav span { font-size: 11px; font-weight: bold; color: #00d4ff; opacity: 0.4; }
         .nav .active { opacity: 1; text-shadow: 0 0 8px #00d4ff; }
-        .card { background: #0a1125; padding: 25px; border-radius: 30px; border: 1px solid #00d4ff4d; position: relative; }
+        .card { background: #0a1125; padding: 25px; border-radius: 30px; border: 1px solid #00d4ff4d; }
         .bal { font-size: 50px; color: #00d4ff; font-weight: bold; margin: 10px 0; }
         .slots { display: flex; justify-content: center; gap: 8px; margin: 20px 0; }
         .reel { width: 80px; height: 100px; background: #000; border-radius: 20px; font-size: 40px; display: flex; align-items: center; justify-content: center; border: 1px solid #1a2c4d; }
         .btn-spin { background: linear-gradient(135deg, #00d4ff, #0088cc); color: white; border: none; padding: 18px; width: 100%; border-radius: 40px; font-size: 22px; font-weight: 800; }
         .btn-dep { background: #1db954; border: none; color: white; padding: 15px; width: 100%; border-radius: 20px; margin-top: 15px; font-weight: bold; }
-        .hidden { display: none; }
-        .item { background: rgba(255,255,255,0.05); padding: 15px; border-radius: 20px; margin-bottom: 10px; display: flex; justify-content: space-between; align-items: center; }
         
-        /* Modal Style */
-        .modal { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.9); display: flex; align-items: center; justify-content: center; z-index: 100; }
-        .m-card { background: #0a1125; width: 85%; padding: 20px; border-radius: 25px; border: 1px solid #00d4ff; }
-        .copy-box { background: #000; padding: 10px; border-radius: 10px; font-size: 11px; margin: 10px 0; word-break: break-all; color: #00d4ff; }
+        /* Модальное окно */
+        .modal { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.95); display: flex; align-items: center; justify-content: center; z-index: 1000; }
+        .hidden { display: none !important; }
+        .m-card { background: #0a1125; width: 85%; padding: 25px; border-radius: 30px; border: 2px solid #00d4ff; box-shadow: 0 0 30px #00d4ff33; }
+        .copy-box { background: #000; padding: 12px; border-radius: 15px; font-size: 11px; margin: 10px 0; word-break: break-all; color: #00d4ff; border: 1px solid #1a2c4d; }
+        .btn-close { background: #333; color: white; border: none; padding: 15px; width: 100%; border-radius: 20px; margin-top: 20px; font-weight: bold; font-size: 16px; }
+        .item { background: rgba(255,255,255,0.05); padding: 15px; border-radius: 20px; margin-bottom: 10px; display: flex; justify-content: space-between; align-items: center; }
     </style>
 </head>
 <body>
@@ -94,10 +95,10 @@ app.get('/', (req, res) => {
 
     <div id="p1" class="card">
         <div style="font-size: 10px; opacity: 0.5;">TON BALANCE</div>
-        <div class="bal" id="bDisp">...</div>
+        <div class="bal" id="bDisp">0.10</div>
         <div class="slots"><div id="r1" class="reel">💎</div><div id="r2" class="reel">💎</div><div id="r3" class="reel">💎</div></div>
         <button class="btn-spin" onclick="spin()">SPIN (0.05)</button>
-        <button class="btn-dep" onclick="showDep()">+ ПОПОЛНИТЬ</button>
+        <button class="btn-dep" onclick="toggleDep(true)">+ ПОПОЛНИТЬ</button>
     </div>
 
     <div id="p2" class="card hidden">
@@ -114,12 +115,12 @@ app.get('/', (req, res) => {
 
     <div id="depModal" class="modal hidden">
         <div class="m-card">
-            <h3>ПОПОЛНЕНИЕ</h3>
-            <p style="font-size:12px; opacity:0.7;">Отправьте любую сумму TON на адрес ниже.</p>
-            <div class="copy-box" onclick="copy('${MY_WALLET}')">${MY_WALLET.slice(0,20)}... (TAP)</div>
-            <p style="font-size:12px; color:#ff4d4d;">ВАЖНО: Комментарий к платежу!</p>
-            <div class="copy-box" id="copyId" onclick="copy(this.innerText)" style="font-size:18px; color:white; font-weight:bold;">ID_</div>
-            <button onclick="showDep()" style="background:#555; color:white; border:none; padding:10px; width:100%; border-radius:15px; margin-top:10px;">ЗАКРЫТЬ</button>
+            <h3 style="margin-top:0;">ПОПОЛНЕНИЕ</h3>
+            <p style="font-size:12px; opacity:0.7;">Скопируйте адрес и ID для оплаты:</p>
+            <div class="copy-box" onclick="copy('${MY_WALLET}')">АДРЕС: ${MY_WALLET.slice(0,15)}... (TAP)</div>
+            <p style="font-size:12px; color:#ff4d4d; font-weight:bold; margin-bottom:5px;">КОММЕНТАРИЙ (ОБЯЗАТЕЛЬНО):</p>
+            <div class="copy-box" id="copyId" onclick="copy(this.innerText)" style="font-size:18px; color:white; font-weight:bold;">ID_...</div>
+            <button class="btn-close" onclick="toggleDep(false)">ЗАКРЫТЬ</button>
         </div>
     </div>
 
@@ -144,10 +145,16 @@ app.get('/', (req, res) => {
             document.getElementById('r1').innerText = d.reels[0];
             document.getElementById('r2').innerText = d.reels[1];
             document.getElementById('r3').innerText = d.reels[2];
-            load(); if(d.win > 0) { tg.HapticFeedback.notificationOccurred('success'); tg.showAlert("WIN! +0.50 TON"); }
+            load(); 
+            if(d.win > 0) { tg.HapticFeedback.notificationOccurred('success'); tg.showAlert("ВЫИГРЫШ! +0.50 TON"); }
         }
 
-        function showDep() { document.getElementById('depModal').classList.toggle('hidden'); }
+        // ФУНКЦИЯ ДЛЯ ОТКРЫТИЯ/ЗАКРЫТИЯ ОКНА
+        function toggleDep(show) {
+            const modal = document.getElementById('depModal');
+            if(show) modal.classList.remove('hidden');
+            else modal.classList.add('hidden');
+        }
         
         function copy(text) {
             navigator.clipboard.writeText(text);
