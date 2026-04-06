@@ -6,98 +6,219 @@ const mongoose = require('mongoose');
 const app = express();
 const PORT = process.env.PORT || 3000;
 
-const MY_WALLET = "UQCy28DFTxwwmULQWw_53PvzuwZqj0spCe1vrUgYQtAvGfvn";
+// === КОНФИГ ===
+const WALLET = "UQCy28DFTxwwmUL (YOUR_WALLET_HERE)"; // Твой кошелек
 const BOT_TOKEN = process.env.BOT_TOKEN;
-const MONGO_URI = process.env.MONGO_URI; 
-const URL_APP = "https://ton-casino-bot.onrender.com";
+const MONGO_URI = process.env.MONGO_URI;
 
-// Подключение к твоей новой базе
-mongoose.connect(MONGO_URI).then(() => console.log("БАЗА ПОДКЛЮЧЕНА")).catch(e => console.log("ОШИБКА БАЗЫ"));
+// === БАЗА ДАННЫХ ===
+mongoose.connect(MONGO_URI)
+    .then(() => console.log(">>> [DB] CONNECTED"))
+    .catch(e => console.log(">>> [DB] ERR:", e.message));
 
-const User = mongoose.model('User', { uid: String, b: { type: Number, default: 0.10 }, s: { type: Number, default: 0 }, w: { type: Number, default: 0 } });
-const Tx = mongoose.model('Tx', { hash: String });
+const User = mongoose.model('User', {
+    uid: { type: String, unique: true },
+    balance: { type: Number, default: 0.10 },
+    s: { type: Number, default: 0 }, // спины
+    w: { type: Number, default: 0 }  // вины
+});
+
+const History = mongoose.model('History', { hash: String });
 
 const bot = new TelegramBot(BOT_TOKEN, { polling: true });
 app.use(express.json());
 
-// Авто-зачисление TON
+// === СКАНЕР TON ===
 async function scan() {
     try {
-        const res = await axios.get(`https://toncenter.com/api/v2/getTransactions?address=${MY_WALLET}&limit=10`);
+        const res = await axios.get(`https://toncenter.com/api/v2/getTransactions?address=${WALLET}&limit=10`);
         for (let tx of res.data.result) {
-            const hash = tx.transaction_id.hash;
-            if (await Tx.findOne({ hash })) continue;
-            const msg = tx.in_msg?.message;
-            if (msg && msg.startsWith("ID_")) {
-                const uid = msg.split("_")[1];
-                const amount = tx.in_msg.value / 1e9;
-                let u = await User.findOne({ uid });
+            const h = tx.transaction_id.hash;
+            const m = tx.in_msg?.message;
+            if (m && m.startsWith("ID_")) {
+                if (await History.findOne({ hash: h })) continue;
+                const uid = m.split("_")[1];
+                const u = await User.findOne({ uid });
                 if (u) {
-                    u.b += amount; await u.save(); await new Tx({ hash }).save();
-                    bot.sendMessage(uid, `✅ +${amount} TON зачислено на ваш вечный баланс!`);
+                    u.balance += tx.in_msg.value / 1e9;
+                    await u.save();
+                    await new History({ hash: h }).save();
+                    bot.sendMessage(uid, "✅ Баланс пополнен!");
                 }
             }
         }
     } catch (e) {}
 }
-setInterval(scan, 45000);
+setInterval(scan, 60000);
 
-bot.onText(/\/start/, (m) => {
-    bot.sendMessage(m.chat.id, "💎 **VIP TON ХОТ ТАП (MONGO)**", {
-        reply_markup: { inline_keyboard: [[{ text: "🎰 ИГРАТЬ", web_app: { url: URL_APP } }]] }
+// === БОТ ===
+bot.onText(/\/start/, async (m) => {
+    const uid = m.chat.id.toString();
+    if (!await User.findOne({ uid })) await new User({ uid }).save();
+    bot.sendMessage(uid, "🎰 **TON CASINO PRO**", {
+        reply_markup: { inline_keyboard: [[{ text: "🚀 ИГРАТЬ", web_app: { url: "https://ton-casino-bot.onrender.com" } }]] }
     });
 });
 
+// === API ===
 app.post('/api/init', async (req, res) => {
-    let u = await User.findOne({ uid: req.body.uid.toString() });
-    if (!u) { u = new User({ uid: req.body.uid.toString() }); await u.save(); }
+    const u = await User.findOne({ uid: req.body.uid.toString() }) || await new User({ uid: req.body.uid.toString() }).save();
     res.json(u);
 });
 
 app.post('/api/spin', async (req, res) => {
-    let u = await User.findOne({ uid: req.body.uid.toString() });
-    if (!u || u.b < 0.05) return res.json({ err: "Мало TON" });
-    u.b -= 0.05; u.s++;
-    let win = 0; const s = ['💎','💰','7️⃣','🍒','⭐'];
-    let r = [s[0], s[1], s[2]].sort(()=>Math.random()-0.5);
-    if (Math.random() < 0.12) { const ws = s[Math.floor(Math.random()*5)]; r=[ws,ws,ws]; win=0.5; u.b+=win; u.w++; }
+    const u = await User.findOne({ uid: req.body.uid.toString() });
+    if (!u || u.balance < 0.05) return res.json({ err: "Мало TON" });
+    
+    u.balance = Number((u.balance - 0.05).toFixed(2));
+    u.s += 1;
+
+    const sym = ['💎', '💰', '7️⃣', '🍒', '⭐', '🔥'];
+    const r = [sym[Math.floor(Math.random()*6)], sym[Math.floor(Math.random()*6)], sym[Math.floor(Math.random()*6)]];
+    let win = 0;
+    if (r[0] === r[1] && r[1] === r[2]) { win = 0.5; u.balance += win; u.w += 1; }
+    
     await u.save();
-    res.json({ reels: r, win, b: u.b.toFixed(2), s: u.s, w: u.w });
+    res.json({ r, win, b: u.balance, s: u.s, w: u.w });
 });
 
+// === ИНТЕРФЕЙС ===
 app.get('/', (req, res) => {
     res.send(`
-<!DOCTYPE html><html><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1,user-scalable=no"><script src="https://telegram.org/js/telegram-web-app.js"></script><style>body{background:#040816;color:#fff;font-family:sans-serif;margin:0;padding:15px}.nav{display:flex;justify-content:space-around;background:#0a1125;padding:12px;border-radius:20px;margin-bottom:20px}.card{background:#0a1125;padding:25px;border-radius:30px;border:1px solid #00d4ff4d}.bal{font-size:50px;color:#00d4ff;font-weight:700}.slots{display:flex;justify-content:center;gap:8px;margin:20px 0}.reel{width:75px;height:90px;background:#000;border-radius:20px;font-size:35px;display:flex;align-items:center;justify-content:center;border:1px solid #1a2c4d}.btn-spin{background:linear-gradient(135deg,#00d4ff,#0088cc);color:#fff;border:none;padding:18px;width:100%;border-radius:40px;font-size:22px;font-weight:800}.btn-dep{background:#1db954;border:none;color:#fff;padding:15px;width:100%;border-radius:20px;margin-top:15px}.modal{position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,.95);display:flex;align-items:center;justify-content:center;z-index:1000}.hidden{display:none!important}.m-card{background:#0a1125;width:85%;padding:25px;border-radius:30px;border:2px solid #00d4ff}.copy-box{background:#000;padding:12px;border-radius:15px;font-size:11px;margin:10px 0;word-break:break-all;color:#00d4ff}</style></head><body>
-<audio id="bg" loop src="https://files.catbox.moe/78surr.mp3"></audio>
-<div class="nav"><span onclick="tab(1)">🎰 ИГРА</span><span onclick="tab(2)">👤 ПРОФИЛЬ</span></div>
-<div id="p1" class="card">
-    <div style="font-size:10px;opacity:.5">TON BALANCE</div>
-    <div class="bal" id="bDisp">...</div>
-    <div class="slots"><div id="r1" class="reel">💎</div><div id="r2" class="reel">💎</div><div id="r3" class="reel">💎</div></div>
-    <button class="btn-spin" onclick="spin()">SPIN (0.05)</button>
-    <button class="btn-dep" onclick="toggleD(true)">+ ПОПОЛНИТЬ</button>
-    <button onclick="toggleM()" style="background:none;border:1px solid #00d4ff;color:#00d4ff;padding:5px;border-radius:10px;margin-top:10px">🎵 МУЗЫКА</button>
-</div>
-<div id="p2" class="card hidden"><h2>ПРОФИЛЬ</h2><p>Игр: <b id="uS">0</b></p><p>Побед: <b id="uW">0</b></p></div>
-<div id="depModal" class="modal hidden">
-    <div class="m-card">
-        <h3>ПОПОЛНЕНИЕ</h3>
-        <p style="font-size:10px">АДРЕС:</p><div class="copy-box" onclick="copy('${MY_WALLET}')">${MY_WALLET}</div>
-        <p style="color:#ff4d4d">КОММЕНТАРИЙ:</p><div class="copy-box" id="copyId" onclick="copy(this.innerText)">ID_...</div>
-        <button onclick="toggleD(false)" style="background:#333;color:#fff;border:none;padding:10px;width:100%;border-radius:15px;margin-top:10px">ЗАКРЫТЬ</button>
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+    <script src="https://telegram.org/js/telegram-web-app.js"></script>
+    <style>
+        :root { --blue: #38bdf8; --bg: #020617; --card: #0f172a; }
+        body { background: var(--bg); color: #fff; font-family: sans-serif; margin: 0; padding: 15px; text-align: center; }
+        .card { background: var(--card); padding: 20px; border-radius: 25px; border: 1px solid #1e293b; margin-bottom: 15px; }
+        .bal { font-size: 45px; color: var(--blue); font-weight: 900; }
+        .reels { display: flex; justify-content: center; gap: 10px; margin: 25px 0; }
+        .reel { width: 80px; height: 100px; background: #000; border-radius: 20px; font-size: 40px; display: flex; align-items: center; justify-content: center; border: 2px solid #334155; }
+        .btn { background: linear-gradient(135deg, var(--blue), #1d4ed8); border: none; color: #fff; padding: 18px; width: 100%; border-radius: 20px; font-size: 20px; font-weight: bold; }
+        .btn:active { transform: scale(0.96); }
+        .nav { display: flex; background: var(--card); border-radius: 20px; margin-top: 20px; padding: 5px; }
+        .tab { flex: 1; padding: 10px; font-size: 12px; opacity: 0.5; }
+        .tab.active { opacity: 1; color: var(--blue); font-weight: bold; }
+        .modal { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.95); display: none; align-items: center; justify-content: center; z-index: 100; }
+        .m-cnt { background: var(--card); width: 85%; padding: 25px; border-radius: 30px; border: 1px solid var(--blue); }
+        .set-row { display: flex; justify-content: space-between; align-items: center; padding: 15px 0; border-bottom: 1px solid #1e293b; }
+        .copy { background: #000; padding: 10px; border-radius: 10px; font-size: 11px; margin: 10px 0; color: var(--blue); word-break: break-all; }
+        .hidden { display: none !important; }
+    </style>
+</head>
+<body>
+    <audio id="mus" loop src="https://files.catbox.moe/78surr.mp3"></audio>
+
+    <div id="p-game">
+        <div class="card">
+            <div style="font-size: 11px; opacity: 0.5;">BALANCE</div>
+            <div class="bal" id="v-bal">0.00</div>
+        </div>
+        <div class="reels">
+            <div class="reel" id="r1">💎</div><div class="reel" id="r2">💎</div><div class="reel" id="r3">💎</div>
+        </div>
+        <button class="btn" onclick="spin()">SPIN (0.05)</button>
+        <button class="btn" onclick="shMod(1)" style="background:#10b981; margin-top:10px;">ПОПОЛНИТЬ</button>
     </div>
-</div>
-<script>
-    const tg=window.Telegram.WebApp;const uid=tg.initDataUnsafe?.user?.id||"USER";const bg=document.getElementById('bg');let mOn=false;
-    async function load(){const r=await fetch('/api/init',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({uid})});const d=await r.json();document.getElementById('bDisp').innerText=d.b;document.getElementById('uS').innerText=d.s;document.getElementById('uW').innerText=d.w;document.getElementById('copyId').innerText="ID_"+uid}
-    async function spin(){const r=await fetch('/api/spin',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({uid})});const d=await r.json();if(d.err)return tg.showAlert(d.err);document.getElementById('r1').innerText=d.reels[0];document.getElementById('r2').innerText=d.reels[1];document.getElementById('r3').innerText=d.reels[2];load();if(d.win>0)tg.showAlert("WIN!")}
-    function toggleD(s){document.getElementById('depModal').classList.toggle('hidden',!s)}
-    function copy(t){navigator.clipboard.writeText(t);tg.showAlert("Скопировано!")}
-    function toggleM(){if(mOn)bg.pause();else bg.play();mOn=!mOn}
-    function tab(n){document.getElementById('p1').classList.toggle('hidden',n!==1);document.getElementById('p2').classList.toggle('hidden',n!==2)}
-    load();
-</script></body></html>
-`);
+
+    <div id="p-settings" class="hidden">
+        <div class="card" style="text-align: left;">
+            <h3 style="margin-top: 0;">НАСТРОЙКИ</h3>
+            <div class="set-row">
+                <span>Звук / Музыка</span>
+                <button onclick="tglM()" id="m-btn" style="background:#1e293b; border:none; color:#fff; padding:5px 15px; border-radius:10px;">ВЫКЛ</button>
+            </div>
+            <div class="set-row">
+                <span>Поддержка</span>
+                <span style="color:var(--blue)">@venom142</span>
+            </div>
+        </div>
+        <div class="card" style="text-align: left;">
+            <h3 style="margin-top: 0;">СТАТИСТИКА</h3>
+            <div class="set-row"><span>Всего игр:</span><span id="v-s">0</span></div>
+            <div class="set-row"><span>Всего побед:</span><span id="v-w">0</span></div>
+        </div>
+    </div>
+
+    <div class="nav">
+        <div class="tab active" id="t1" onclick="sw(1)">🎰 ИГРА</div>
+        <div class="tab" id="t2" onclick="sw(2)">⚙️ НАСТРОЙКИ</div>
+    </div>
+
+    <div class="modal" id="mod">
+        <div class="m-cnt">
+            <h3>ДЕПОЗИТ</h3>
+            <div class="copy" onclick="cp('${WALLET}')">${WALLET}</div>
+            <p style="color:#ef4444; font-size:12px;">КОММЕНТАРИЙ:</p>
+            <div class="copy" id="v-cid" style="font-size:18px; color:#fff;" onclick="cp(this.innerText)">ID_...</div>
+            <button onclick="shMod(0)" style="background:#334155; border:none; color:#fff; padding:10px; width:100%; border-radius:10px;">ЗАКРЫТЬ</button>
+        </div>
+    </div>
+
+    <script>
+        const tg = window.Telegram.WebApp;
+        const uid = tg.initDataUnsafe?.user?.id || "666";
+        const mu = document.getElementById('mus');
+        let mOn = false;
+
+        async function init() {
+            const r = await fetch('/api/init', { method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify({uid}) });
+            const d = await r.json();
+            upd(d);
+        }
+
+        function upd(d) {
+            document.getElementById('v-bal').innerText = d.balance.toFixed(2);
+            document.getElementById('v-s').innerText = d.s || 0;
+            document.getElementById('v-w').innerText = d.w || 0;
+            document.getElementById('v-cid').innerText = 'ID_' + uid;
+        }
+
+        async function spin() {
+            tg.HapticFeedback.impactOccurred('medium');
+            const r = await fetch('/api/spin', { method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify({uid}) });
+            const d = await r.json();
+            if(d.err) return tg.showAlert(d.err);
+            
+            let c = 0;
+            const a = setInterval(() => {
+                const s = ['🍒','7️⃣','💎','💰','⭐'];
+                document.getElementById('r1').innerText = s[Math.floor(Math.random()*5)];
+                document.getElementById('r2').innerText = s[Math.floor(Math.random()*5)];
+                document.getElementById('r3').innerText = s[Math.floor(Math.random()*5)];
+                if(c++ > 10) {
+                    clearInterval(a);
+                    document.getElementById('r1').innerText = d.r[0];
+                    document.getElementById('r2').innerText = d.r[1];
+                    document.getElementById('r3').innerText = d.r[2];
+                    upd(d);
+                    if(d.win > 0) { tg.HapticFeedback.notificationOccurred('success'); tg.showAlert("WIN! +0.50"); }
+                }
+            }, 70);
+        }
+
+        function sw(n) {
+            document.getElementById('p-game').classList.toggle('hidden', n !== 1);
+            document.getElementById('p-settings').classList.toggle('hidden', n !== 2);
+            document.getElementById('t1').classList.toggle('active', n === 1);
+            document.getElementById('t2').classList.toggle('active', n === 2);
+        }
+        function shMod(s) { document.getElementById('mod').style.display = s ? 'flex' : 'none'; }
+        function cp(t) { navigator.clipboard.writeText(t); tg.showAlert("Скопировано!"); }
+        function tglM() {
+            if(mOn) { mu.pause(); document.getElementById('m-btn').innerText="ВЫКЛ"; }
+            else { mu.play(); document.getElementById('m-btn').innerText="ВКЛ"; }
+            mOn = !mOn;
+        }
+        init();
+    </script>
+</body>
+</html>
+    `);
 });
 
-app.listen(PORT, () => console.log("SERVER OK"));
+app.listen(PORT, () => console.log(">>> SERVER LIVE"));
