@@ -30,17 +30,17 @@ setInterval(async () => {
                 if (await Tx.findOne({ hash: h })) continue;
                 const u = await User.findOne({ uid: m.split("_")[1] });
                 if (u) {
-                    u.balance += tx.in_msg.value / 1e9;
+                    u.balance = Number((u.balance + tx.in_msg.value / 1e9).toFixed(2));
                     await u.save(); await new Tx({ hash: h }).save();
                     bot.sendMessage(u.uid, "💎 Баланс пополнен!");
                 }
             }
         }
     } catch (e) {}
-}, 20000);
+}, 15000);
 
 bot.onText(/\/start/, (m) => {
-    bot.sendMessage(m.chat.id, "🎰 **NEON CASINO**", {
+    bot.sendMessage(m.chat.id, "🎰 **VIP TON HOT TAP**", {
         reply_markup: { inline_keyboard: [[{ text: "🚀 ЗАПУСТИТЬ", web_app: { url: "https://ton-casino-bot.onrender.com" } }]] }
     });
 });
@@ -61,7 +61,7 @@ app.post('/api/spin', async (req, res) => {
     await u.save(); res.json({ r, win, balance: u.balance, s: u.s, w: u.w });
 });
 
-// === UI (TOP MENU EDITION) ===
+// === UI ===
 app.get('/', (req, res) => {
     res.send(`
 <!DOCTYPE html>
@@ -71,32 +71,38 @@ app.get('/', (req, res) => {
     <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
     <script src="https://telegram.org/js/telegram-web-app.js"></script>
     <style>
-        * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
-        body { background: #03001c; color: #fff; font-family: sans-serif; margin: 0; padding: 10px; text-align: center; height: 100vh; overflow: hidden; position: relative; }
+        * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; margin: 0; padding: 0; }
+        body { 
+            background: #03001c; color: #fff; font-family: sans-serif; 
+            text-align: center; height: 100vh; width: 100vw; 
+            overflow: hidden; position: fixed; 
+        }
         
-        /* Сетка и солнце */
-        body::before { content: ''; position: absolute; top:0; left:0; width:100%; height:100%; background: linear-gradient(0deg, #110029, transparent 60%), url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="40" height="40"><path d="M0,0H40V40H0V0ZM1,1V39H39V1H1V1Z" fill="rgba(110,0,255,0.15)"/></svg>'); z-index: -1; transform: perspective(100vh) rotateX(60deg) translateY(-10%); }
-        .sun { width: 70px; height: 70px; background: linear-gradient(#ff0, #f06); border-radius: 50%; margin: 5px auto; box-shadow: 0 0 20px #f06; }
+        body::before { content: ''; position: absolute; top:0; left:0; width:100%; height:100%; background: linear-gradient(0deg, #110029, transparent 60%), url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="40" height="40"><path d="M0,0H40V40H0V0ZM1,1V39H39V1H1V1Z" fill="rgba(110,0,255,0.1)"/></svg>'); z-index: -1; transform: perspective(100vh) rotateX(60deg) translateY(-10%); }
+        .sun { width: 80px; height: 80px; background: linear-gradient(#ff0, #f06); border-radius: 50%; margin: 10px auto; box-shadow: 0 0 25px #f06; }
 
-        /* Верхнее меню */
-        .nav-top { display: flex; gap: 5px; margin-bottom: 15px; }
-        .tab { flex: 1; padding: 12px 5px; background: rgba(0,0,0,0.6); border: 1px solid #444; border-radius: 10px; font-size: 11px; font-weight: bold; color: #888; text-transform: uppercase; }
+        .nav-top { display: flex; gap: 5px; padding: 15px 15px 5px; }
+        .tab { flex: 1; padding: 12px 5px; background: rgba(0,0,0,0.6); border: 1px solid #444; border-radius: 12px; font-size: 11px; font-weight: bold; color: #888; text-transform: uppercase; }
         .tab.active { border-color: #f0f; color: #fff; box-shadow: 0 0 10px rgba(255,0,255,0.3); background: rgba(255,0,255,0.1); }
 
-        .card { background: rgba(0,0,0,0.7); border: 1px solid #0ff; padding: 15px; border-radius: 20px; box-shadow: 0 0 15px rgba(0,212,255,0.1); }
-        .bal { font-size: 40px; font-weight: bold; color: #fff; text-shadow: 0 0 10px #0ff; margin: 5px 0; }
+        .container { padding: 0 20px; }
+        .card { background: rgba(0,0,0,0.75); border: 1px solid #0ff; padding: 20px; border-radius: 25px; box-shadow: 0 0 20px rgba(0,212,255,0.15); margin-top: 10px; }
+        .bal { font-size: 45px; font-weight: 900; color: #fff; text-shadow: 0 0 12px #0ff; }
         
-        .reels { display: flex; justify-content: center; gap: 8px; margin: 15px 0; }
-        .reel { width: 30%; height: 80px; background: #000; border: 2px solid #f0f; border-radius: 15px; font-size: 35px; display: flex; align-items: center; justify-content: center; }
+        .reels { display: flex; justify-content: center; gap: 10px; margin: 25px 0; }
+        .reel { width: 30%; height: 90px; background: #000; border: 2px solid #f0f; border-radius: 20px; font-size: 40px; display: flex; align-items: center; justify-content: center; }
 
-        .btn-spin { width: 100%; padding: 20px; border-radius: 20px; border: 1px solid #fff; background: linear-gradient(135deg, #f0f, #6e00ff); color: #fff; font-size: 20px; font-weight: bold; text-transform: uppercase; box-shadow: 0 5px 20px rgba(255,0,255,0.4); }
-        .btn-spin:active { transform: scale(0.95); }
+        .btn-spin { width: 100%; padding: 22px; border-radius: 20px; border: 1px solid #fff; background: linear-gradient(135deg, #f0f, #6e00ff); color: #fff; font-size: 22px; font-weight: bold; text-transform: uppercase; box-shadow: 0 5px 25px rgba(255,0,255,0.4); }
+        .btn-spin:active { transform: scale(0.96); }
 
-        .copy-box { background: #111; padding: 10px; border-radius: 10px; font-family: monospace; font-size: 11px; color: #0ff; margin: 5px 0; word-break: break-all; border: 1px solid #333; }
+        .set-btn { width: 100%; padding: 15px; background: rgba(255,255,255,0.05); border: 1px solid #444; border-radius: 15px; color: #fff; font-size: 14px; margin-top: 10px; }
+        .copy-box { background: #111; padding: 12px; border-radius: 12px; font-family: monospace; font-size: 11px; color: #0ff; margin: 8px 0; border: 1px solid #333; overflow: hidden; text-overflow: ellipsis; }
         .hidden { display: none !important; }
     </style>
 </head>
 <body>
+    <audio id="bg-mus" loop src="https://files.catbox.moe/78surr.mp3"></audio>
+
     <div class="nav-top">
         <div class="tab active" id="t1" onclick="sw(1)">ИГРА</div>
         <div class="tab" id="t2" onclick="sw(2)">СТАТИСТИКА</div>
@@ -105,40 +111,46 @@ app.get('/', (req, res) => {
 
     <div class="sun"></div>
 
-    <div id="p-game">
-        <div class="card">
-            <small style="opacity:0.5;">БАЛАНС TON</small>
-            <div class="bal" id="v-bal">0.00</div>
+    <div class="container">
+        <div id="p-game">
+            <div class="card">
+                <small style="opacity:0.5; font-weight:bold; letter-spacing:1px;">БАЛАНС TON</small>
+                <div class="bal" id="v-bal">0.00</div>
+            </div>
+            <div class="reels">
+                <div class="reel" id="r1">💎</div><div class="reel" id="r2">7️⃣</div><div class="reel" id="r3">💎</div>
+            </div>
+            <button class="btn-spin" onclick="spin()">КРУТИТЬ (0.05)</button>
         </div>
-        <div class="reels">
-            <div class="reel" id="r1">💎</div><div class="reel" id="r2">7️⃣</div><div class="reel" id="r3">💎</div>
-        </div>
-        <button class="btn-spin" onclick="spin()">КРУТИТЬ (0.05)</button>
-    </div>
 
-    <div id="p-stat" class="hidden">
-        <div class="card" style="text-align: left;">
-            <h3 style="margin-top:0; color:#f0f;">ВАША АКТИВНОСТЬ</h3>
-            <div style="display:flex; justify-content:space-between; padding:10px 0; border-bottom:1px solid #222;">Всего игр: <span id="v-s">0</span></div>
-            <div style="display:flex; justify-content:space-between; padding:10px 0;">Побед: <span id="v-w" style="color:#0f0;">0</span></div>
+        <div id="p-stat" class="hidden">
+            <div class="card" style="text-align: left;">
+                <h3 style="color:#f0f; margin-bottom:15px;">ВАША АКТИВНОСТЬ</h3>
+                <div style="display:flex; justify-content:space-between; padding:12px 0; border-bottom:1px solid #222;">Всего игр: <span id="v-s" style="color:#fff; font-weight:bold;">0</span></div>
+                <div style="display:flex; justify-content:space-between; padding:12px 0;">Побед: <span id="v-w" style="color:#0f0; font-weight:bold;">0</span></div>
+            </div>
         </div>
-    </div>
 
-    <div id="p-set" class="hidden">
-        <div class="card" style="text-align: left;">
-            <h3 style="margin-top:0; color:#0ff;">ПОПОЛНЕНИЕ</h3>
-            <p style="font-size:12px; margin-bottom:5px;">Кошелек для перевода:</p>
-            <div class="copy-box" onclick="cp('${WALLET}')">${WALLET}</div>
-            <p style="font-size:12px; margin:15px 0 5px; color:#ff4444;">ID (ОБЯЗАТЕЛЬНО В КОММЕНТАРИЙ):</p>
-            <div class="copy-box" id="v-cid" onclick="cp(this.innerText)">ID_...</div>
-            <p style="font-size:10px; opacity:0.4; margin-top:10px;">Нажми на адрес или ID, чтобы скопировать</p>
+        <div id="p-set" class="hidden">
+            <div class="card" style="text-align: left;">
+                <h3 style="margin-bottom:10px; color:#0ff;">ОПЦИИ</h3>
+                <button class="set-btn" onclick="tglM()" id="m-btn">🔊 МУЗЫКА: ВЫКЛ</button>
+                
+                <h3 style="margin:20px 0 10px; color:#0ff;">ПОПОЛНИТЬ</h3>
+                <div class="copy-box" onclick="cp('${WALLET}')">${WALLET}</div>
+                <div class="copy-box" id="v-cid" onclick="cp(this.innerText)" style="color:#fff; font-size:16px;">ID_...</div>
+            </div>
         </div>
     </div>
 
     <script>
         const tg = window.Telegram.WebApp;
+        tg.expand();
+        tg.enableClosingConfirmation();
         const uid = tg.initDataUnsafe?.user?.id || "12345";
-        
+        const mus = document.getElementById('bg-mus');
+        let mOn = false;
+
         async function sync() {
             try {
                 const r = await fetch('/api/sync', { method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify({uid}) });
@@ -151,7 +163,7 @@ app.get('/', (req, res) => {
         }
 
         async function spin() {
-            tg.HapticFeedback.impactOccurred('medium');
+            tg.HapticFeedback.impactOccurred('heavy');
             const r = await fetch('/api/spin', { method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify({uid}) });
             const d = await r.json();
             if(d.err) return tg.showAlert(d.err);
@@ -162,7 +174,7 @@ app.get('/', (req, res) => {
             sync();
             if(d.win > 0) {
                 tg.HapticFeedback.notificationOccurred('success');
-                tg.showAlert("ПОБЕДА! +0.50 TON");
+                tg.showAlert("🔥 ПОБЕДА! +0.50 TON");
             }
         }
 
@@ -175,6 +187,12 @@ app.get('/', (req, res) => {
             document.getElementById('t3').classList.toggle('active', n === 3);
         }
 
+        function tglM() {
+            if(mOn) { mus.pause(); document.getElementById('m-btn').innerText = "🔊 МУЗЫКА: ВЫКЛ"; }
+            else { mus.play(); document.getElementById('m-btn').innerText = "🔊 МУЗЫКА: ВКЛ"; }
+            mOn = !mOn;
+        }
+
         function cp(t) { navigator.clipboard.writeText(t); tg.showAlert("Скопировано!"); }
         
         setInterval(sync, 5000); sync();
@@ -184,4 +202,4 @@ app.get('/', (req, res) => {
     `);
 });
 
-app.listen(PORT, () => console.log("OK"));
+app.listen(PORT, () => console.log("VIP LIVE"));
