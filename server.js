@@ -40,13 +40,13 @@ bot.onText(/\/addpromo (.+) (.+) (.+)/, async (msg, match) => {
     const limit = parseInt(match[3]);
     try {
         await new Promo({ code, amount, limit }).save();
-        bot.sendMessage(msg.chat.id, ✅ Промо **${code}** создан на **${amount} TON**);
+        bot.sendMessage(msg.chat.id, `✅ Промо **${code}** создан на **${amount} TON**`);
     } catch (e) { bot.sendMessage(msg.chat.id, "❌ Ошибка"); }
 });
 
 bot.onText(/\/start/, async (m) => {
     let u = await User.findOne({ uid: m.from.id.toString() }) || await new User({ uid: m.from.id.toString() }).save();
-    bot.sendMessage(m.chat.id, 💎 VIP TON ХОТ ТАП 💎\n\n💰 Баланс: ${u.balance.toFixed(2)} TON, {
+    bot.sendMessage(m.chat.id, `💎 VIP TON ХОТ ТАП 💎\n\n💰 Баланс: ${u.balance.toFixed(2)} TON`, {
         reply_markup: { inline_keyboard: [[{ text: "🚀 ИГРАТЬ", web_app: { url: "https://ton-casino-bot.onrender.com" } }]] }
     });
 });
@@ -54,7 +54,7 @@ bot.onText(/\/start/, async (m) => {
 // === СКАНЕР ДЕПОЗИТОВ ===
 setInterval(async () => {
     try {
-        const res = await axios.get(https://toncenter.com/api/v2/getTransactions?address=${WALLET}&limit=5);
+        const res = await axios.get(`https://toncenter.com/api/v2/getTransactions?address=${WALLET}&limit=5`);
         for (let tx of res.data.result) {
             const h = tx.transaction_id.hash;
             const m = tx.in_msg?.message;
@@ -66,7 +66,7 @@ setInterval(async () => {
                     if (u) {
                         u.balance = Number((u.balance + val).toFixed(2));
                         await u.save(); await new Tx({ hash: h }).save();
-                        bot.sendMessage(u.uid, 💎 +${val} TON на балансе!);
+                        bot.sendMessage(u.uid, `💎 +${val} TON на балансе!`);
                     }
                 }
             }
@@ -94,7 +94,7 @@ app.post('/api/spin', async (req, res) => {
     
     let win = 0; 
     if (r[0] === r[1] && r[1] === r[2]) { 
-        win = Number((betVal * 10).toFixed(2)); // Выигрыш x10
+        win = Number((betVal * 10).toFixed(2)); 
         u.balance += win; u.w += 1; 
     }
     
@@ -106,7 +106,7 @@ app.post('/api/promo', async (req, res) => {
     const { uid, code } = req.body;
     const u = await User.findOne({ uid: uid.toString() });
     const pr = await Promo.findOne({ code: code.toUpperCase().trim() });
-    if (!u  !pr  u.promo.includes(pr.code) || pr.used >= pr.limit) return res.json({ err: "ОШИБКА" });
+    if (!u || !pr || u.promo.includes(pr.code) || pr.used >= pr.limit) return res.json({ err: "ОШИБКА" });
     u.balance = Number((u.balance + pr.amount).toFixed(2));
     u.promo.push(pr.code); pr.used += 1;
     await u.save(); await pr.save();
@@ -132,23 +132,17 @@ app.get('/', (req, res) => {
         .main-container { flex: 1; display: flex; flex-direction: column; justify-content: space-around; padding: 0 15px 25px; z-index: 5; }
         .card { background: rgba(0,0,0,0.85); border: 1px solid #0ff; padding: 15px; border-radius: 20px; text-align: center; }
         .bal { font-size: 40px; font-weight: 900; color: #fff; text-shadow: 0 0 10px #0ff; }
-        
-        /* СТАВКИ */
         .bet-selector { display: flex; justify-content: space-between; gap: 5px; margin: 10px 0; }
         .bet-btn { flex: 1; padding: 10px; background: #111; border: 1px solid #444; border-radius: 10px; color: #888; font-weight: bold; font-size: 12px; }
         .bet-btn.active { border-color: #0ff; color: #0ff; background: rgba(0,255,255,0.1); }
-
-        /* РУЛЕТКА */
         .reels { display: flex; justify-content: center; gap: 8px; margin: 10px 0; }
         .reel-window { width: 30%; height: 80px; background: #000; border: 2px solid #f0f; border-radius: 15px; overflow: hidden; position: relative; box-shadow: inset 0 0 10px #f0f; }
         .reel-strip { position: absolute; width: 100%; display: flex; flex-direction: column; align-items: center; top: 0; }
         .symbol { height: 80px; display: flex; align-items: center; justify-content: center; font-size: 40px; }
         .blur { filter: blur(4px); }
-
         .btn-spin { width: 100%; padding: 20px; border-radius: 18px; border: none; background: linear-gradient(135deg, #ff00ff, #6e00ff); color: #fff; font-size: 20px; font-weight: 900; text-transform: uppercase; box-shadow: 0 0 15px rgba(255, 0, 255, 0.4); }
         .copy-box { background: #111; padding: 10px; border-radius: 10px; font-family: monospace; font-size: 11px; color: #0ff; border: 1px solid #333; margin-top: 5px; word-break: break-all; }
-
-.hidden { display: none !important; }
+        .hidden { display: none !important; }
         .set-btn { width: 100%; padding: 15px; background: rgba(255,255,255,0.05); border: 1px solid #444; border-radius: 12px; color: #fff; margin-top: 10px; font-weight: bold; }
     </style>
 </head>
@@ -164,14 +158,12 @@ app.get('/', (req, res) => {
     <div class="main-container">
         <div id="p-game">
             <div class="card"><p style="font-size:10px; opacity:0.5;">БАЛАНС TON</p><div class="bal" id="v-bal">0.00</div></div>
-            
             <div class="bet-selector">
                 <button class="bet-btn active" onclick="setBet(0.01, this)">0.01</button>
                 <button class="bet-btn" onclick="setBet(0.1, this)">0.10</button>
                 <button class="bet-btn" onclick="setBet(0.5, this)">0.50</button>
                 <button class="bet-btn" onclick="setBet(1.0, this)">1.00</button>
             </div>
-
             <div class="reels">
                 <div class="reel-window"><div class="reel-strip" id="rs1"></div></div>
                 <div class="reel-window"><div class="reel-strip" id="rs2"></div></div>
@@ -179,7 +171,6 @@ app.get('/', (req, res) => {
             </div>
             <button id="spin-btn" class="btn-spin" onclick="spin()">ИГРАТЬ</button>
         </div>
-        
         <div id="p-dep" class="hidden">
             <div class="card" style="text-align: left;">
                 <h3 style="color:#0ff;">ДЕПОЗИТ</h3>
@@ -191,7 +182,6 @@ app.get('/', (req, res) => {
         <div id="p-stat" class="hidden"><div class="card" style="text-align: left;"><h3>СТАТЫ</h3><p>Игр: <span id="v-s">0</span></p><p>Побед: <span id="v-w">0</span></p></div></div>
         <div id="p-set" class="hidden"><div class="card"><button class="set-btn" onclick="tglM()" id="m-btn">🔊 МУЗЫКА: ВЫКЛ</button><button class="set-btn" style="background:#0ff; color:#000;" onclick="askPromo()">🎟 ПРОМОКОД</button></div></div>
     </div>
-
     <script>
         const tg = window.Telegram.WebApp; tg.expand();
         const uid = tg.initDataUnsafe?.user?.id || "12345";
@@ -221,35 +211,33 @@ app.get('/', (req, res) => {
         initReels();
 
         async function sync() {
-            const r = await fetch('/api/sync', { method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify({uid}) });
-            const d = await r.json();
-            document.getElementById('v-bal').innerText = d.balance.toFixed(2);
-            document.getElementById('v-s').innerText = d.s; document.getElementById('v-w').innerText = d.w;
-            document.getElementById('v-cid').innerText = 'ID_' + uid;
+            try {
+                const r = await fetch('/api/sync', { method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify({uid}) });
+                const d = await r.json();
+                document.getElementById('v-bal').innerText = d.balance.toFixed(2);
+                document.getElementById('v-s').innerText = d.s; document.getElementById('v-w').innerText = d.w;
+                document.getElementById('v-cid').innerText = 'ID_' + uid;
+            } catch (e) {}
         }
 
-async function spin() {
+        async function spin() {
             const btn = document.getElementById('spin-btn');
             btn.disabled = true;
             tg.HapticFeedback.impactOccurred('heavy');
-
             try {
                 const r = await fetch('/api/spin', { method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify({uid, bet: currentBet}) });
                 const d = await r.json();
                 if(d.err) { btn.disabled = false; return tg.showAlert(d.err); }
-
                 [1,2,3].forEach((id, i) => {
                     const strip = document.getElementById('rs'+id);
                     strip.classList.add('blur');
                     strip.lastElementChild.innerText = d.r[i];
                     strip.style.transition = 'none';
                     strip.style.transform = 'translateY(0)';
-                    
                     setTimeout(() => {
                         strip.style.transition = 'transform ' + (1.0 + i*0.3) + 's cubic-bezier(0.45, 0.05, 0.55, 0.95)';
-                        strip.style.transform = 'translateY(-2320px)'; // 29 символов * 80px
+                        strip.style.transform = 'translateY(-2320px)';
                     }, 50);
-
                     setTimeout(() => {
                         strip.classList.remove('blur');
                         if(i === 2) {
@@ -283,4 +271,4 @@ async function spin() {
     `);
 });
 
-app.listen(PORT, () => console.log("SERVER LIVE V0.2"));
+app.listen(PORT, () => console.log("SERVER LIVE V0.3 - FRANKFURT"));
