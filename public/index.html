@@ -1,0 +1,189 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+    <title>💎 VIP TON ХОТ ТАП 💎</title>
+    <script src="https://telegram.org/js/telegram-web-app.js"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Montserrat:wght@400;700;900&display=swap" rel="stylesheet">
+    
+    <style>
+        /* [ СЕКЦИЯ 1: ГЛОБАЛЬНЫЕ ПЕРЕМЕННЫЕ ] */
+        :root {
+            --p: #00ffff; /* Neon Cyan */
+            --s: #a200ff; /* Deep Purple */
+            --a: #ff00ff; /* Hot Pink */
+            --bg: #050505;
+            --panel: rgba(255, 255, 255, 0.05);
+            --grad: linear-gradient(135deg, var(--s) 0%, #7000ff 100%);
+            --shadow: 0 0 20px rgba(162, 0, 255, 0.3);
+        }
+
+        /* [ СЕКЦИЯ 2: БАЗОВЫЕ СТИЛИ ] */
+        * { margin: 0; padding: 0; box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+        body {
+            background: var(--bg);
+            color: #fff;
+            font-family: 'Montserrat', sans-serif;
+            overflow: hidden;
+            height: 100vh;
+            display: flex;
+            flex-direction: column;
+        }
+
+        /* [ СЕКЦИЯ 3: АНИМАЦИИ (Раздуваем код) ] */
+        @keyframes glow { 0% { text-shadow: 0 0 10px var(--p); } 50% { text-shadow: 0 0 25px var(--p); } 100% { text-shadow: 0 0 10px var(--p); } }
+        @keyframes float { 0% { transform: translateY(0px); } 50% { transform: translateY(-10px); } 100% { transform: translateY(0px); } }
+        @keyframes spin-reel { 0% { transform: scale(1); filter: blur(0); } 50% { transform: scale(0.9); filter: blur(5px); } 100% { transform: scale(1); filter: blur(0); } }
+
+        /* [ СЕКЦИЯ 4: ИНТЕРФЕЙС ] */
+        .app-container { display: flex; flex-direction: column; height: 100vh; padding: 20px; }
+        
+        /* ШАПКА */
+        .header {
+            background: var(--panel);
+            backdrop-filter: blur(10px);
+            border: 1px solid rgba(255,255,255,0.1);
+            border-radius: 30px;
+            padding: 20px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 30px;
+            animation: float 4s infinite ease-in-out;
+        }
+
+        .balance-title { font-size: 10px; color: #aaa; letter-spacing: 2px; text-transform: uppercase; }
+        .balance-value { font-size: 36px; font-weight: 900; color: var(--p); animation: glow 2s infinite; }
+
+        /* ИГРОВОЕ ПОЛЕ */
+        .reels-area {
+            flex: 1;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 15px;
+        }
+
+        .reel-box {
+            width: 95px;
+            height: 140px;
+            background: #111;
+            border: 2px solid var(--s);
+            border-radius: 25px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 60px;
+            box-shadow: var(--shadow);
+            transition: 0.2s;
+        }
+
+        .reel-box.active { animation: spin-reel 0.1s infinite; }
+
+        /* КНОПКИ УПРАВЛЕНИЯ */
+        .controls { display: flex; flex-direction: column; gap: 15px; padding-bottom: env(safe-area-inset-bottom); }
+        
+        .btn-main {
+            background: var(--grad);
+            border: none;
+            border-radius: 25px;
+            padding: 25px;
+            color: #fff;
+            font-size: 24px;
+            font-weight: 900;
+            text-transform: uppercase;
+            box-shadow: 0 10px 30px rgba(112, 0, 255, 0.5);
+            cursor: pointer;
+        }
+
+        .btn-main:active { transform: scale(0.95); }
+
+        .btn-row { display: grid; grid-template-columns: 1fr 1fr; gap: 15px; }
+        .btn-sec {
+            background: rgba(255,255,255,0.05);
+            border: 1px solid #333;
+            border-radius: 20px;
+            padding: 15px;
+            color: #ccc;
+            font-weight: 700;
+        }
+
+        /* [ СЕКЦИЯ 5: МОДАЛКИ (ЭКРАНЫ) ] */
+        .overlay {
+            position: fixed;
+            inset: 0;
+            background: rgba(0,0,0,0.95);
+            z-index: 100;
+            display: none;
+            padding: 30px;
+            flex-direction: column;
+        }
+        .overlay.visible { display: flex; }
+    </style>
+</head>
+<body>
+
+    <div class="app-container">
+        <div class="header">
+            <div>
+                <div class="balance-title">WALLET (TON)</div>
+                <div class="balance-value" id="bal">106.00</div>
+            </div>
+            <div style="text-align: right;">
+                <div class="balance-title">RANK</div>
+                <div style="font-weight: 800; color: var(--a);">VIP DIAMOND</div>
+            </div>
+        </div>
+
+        <div class="reels-area">
+            <div class="reel-box" id="r1">💎</div>
+            <div class="reel-box" id="r2">💎</div>
+            <div class="reel-box" id="r3">💎</div>
+        </div>
+
+        <div class="controls">
+            <button class="btn-main" onclick="play()">HOT TAP SPIN</button>
+            <div class="btn-row">
+                <button class="btn-sec" onclick="openS('dep')">💳 DEPOSIT</button>
+                <button class="btn-sec" onclick="openS('tasks')">🏆 TASKS</button>
+            </div>
+        </div>
+    </div>
+
+    <div id="dep" class="overlay">
+        <h1 style="color:var(--p); font-size: 40px; margin-bottom: 20px;">DEPOSIT</h1>
+        <p style="color: #777;">Отправь TON на адрес ниже:</p>
+        <div style="background: #111; padding: 20px; border-radius: 20px; border: 1px dashed var(--s); margin: 20px 0; word-break: break-all; font-family: monospace;">
+            UQCy28DFTxwwmULQWw_53PvzuwZqj0spCe1vrUgYQtAvGfvn
+        </div>
+        <button class="btn-main" onclick="copy()">COPY ADDRESS</button>
+        <button class="btn-sec" style="margin-top: 15px;" onclick="closeS()">BACK</button>
+    </div>
+
+    <script>
+        const tg = window.Telegram.WebApp;
+        tg.expand();
+
+        function openS(id) { document.getElementById(id).classList.add('visible'); tg.HapticFeedback.impactOccurred('light'); }
+        function closeS() { document.querySelectorAll('.overlay').forEach(e => e.classList.remove('visible')); }
+
+        function play() {
+            tg.HapticFeedback.impactOccurred('heavy');
+            const reels = [document.getElementById('r1'), document.getElementById('r2'), document.getElementById('r3')];
+            
+            reels.forEach(r => r.classList.add('active'));
+            
+            setTimeout(() => {
+                reels.forEach(r => r.classList.remove('active'));
+                // Тут будет запрос к серверу
+            }, 1000);
+        }
+
+        function copy() {
+            navigator.clipboard.writeText("UQCy28DFTxwwmULQWw_53PvzuwZqj0spCe1vrUgYQtAvGfvn");
+            tg.showAlert("Адрес скопирован!");
+        }
+    </script>
+</body>
+      </html>
