@@ -123,31 +123,37 @@ app.get('/', (req, res) => {
     <script src="https://telegram.org/js/telegram-web-app.js"></script>
     <style>
         * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; margin: 0; padding: 0; }
-        body { height: 100vh; overflow: hidden; background: radial-gradient(circle at center, #2e0052 0%, #03001c 100%); color: #fff; font-family: sans-serif; display: flex; flex-direction: column; }
-        .bg-grid { position: absolute; top: -50%; left: -50%; right: -50%; bottom: -50%; background-image: linear-gradient(rgba(110, 0, 255, 0.1) 1px, transparent 1px), linear-gradient(90deg, rgba(110, 0, 255, 0.1) 1px, transparent 1px); background-size: 50px 50px; z-index: -1; transform: perspective(500px) rotateX(60deg); animation: grid-move 3s linear infinite; }
-        @keyframes grid-move { from { transform: perspective(500px) rotateX(60deg) translateY(0); } to { transform: perspective(500px) rotateX(60deg) translateY(50px); } }
+        body { 
+            height: 100vh; 
+            overflow: hidden; 
+            background: url('https://files.catbox.moe/622ngf.jpg') no-repeat center center fixed; 
+            background-size: cover; 
+            color: #fff; 
+            font-family: sans-serif; 
+            display: flex; 
+            flex-direction: column; 
+        }
         .nav-top { display: flex; gap: 5px; padding: 10px; z-index: 10; }
-        .tab { flex: 1; padding: 12px; background: rgba(0,0,0,0.6); border: 1px solid #333; border-radius: 12px; font-size: 10px; font-weight: 800; color: #666; text-transform: uppercase; text-align: center; }
-        .tab.active { border-color: #f0f; color: #fff; background: rgba(255,0,255,0.1); }
+        .tab { flex: 1; padding: 12px; background: rgba(0,0,0,0.7); border: 1px solid #333; border-radius: 12px; font-size: 10px; font-weight: 800; color: #666; text-transform: uppercase; text-align: center; }
+        .tab.active { border-color: #f0f; color: #fff; background: rgba(255,0,255,0.2); }
         .main-container { flex: 1; display: flex; flex-direction: column; justify-content: space-around; padding: 0 15px 25px; z-index: 5; }
-        .card { background: rgba(0,0,0,0.85); border: 1px solid #0ff; padding: 15px; border-radius: 20px; text-align: center; }
+        .card { background: rgba(0,0,0,0.8); border: 1px solid #0ff; padding: 15px; border-radius: 20px; text-align: center; box-shadow: 0 0 15px rgba(0,255,255,0.2); }
         .bal { font-size: 40px; font-weight: 900; color: #fff; text-shadow: 0 0 10px #0ff; }
         .bet-selector { display: flex; justify-content: space-between; gap: 5px; margin: 10px 0; }
-        .bet-btn { flex: 1; padding: 10px; background: #111; border: 1px solid #444; border-radius: 10px; color: #888; font-weight: bold; font-size: 12px; }
+        .bet-btn { flex: 1; padding: 10px; background: rgba(0,0,0,0.6); border: 1px solid #444; border-radius: 10px; color: #888; font-weight: bold; font-size: 12px; }
         .bet-btn.active { border-color: #0ff; color: #0ff; background: rgba(0,255,255,0.1); }
         .reels { display: flex; justify-content: center; gap: 8px; margin: 10px 0; }
-        .reel-window { width: 30%; height: 80px; background: #000; border: 2px solid #f0f; border-radius: 15px; overflow: hidden; position: relative; box-shadow: inset 0 0 10px #f0f; }
+        .reel-window { width: 30%; height: 80px; background: rgba(0,0,0,0.9); border: 2px solid #f0f; border-radius: 15px; overflow: hidden; position: relative; box-shadow: inset 0 0 10px #f0f; }
         .reel-strip { position: absolute; width: 100%; display: flex; flex-direction: column; align-items: center; top: 0; }
         .symbol { height: 80px; display: flex; align-items: center; justify-content: center; font-size: 40px; }
         .blur { filter: blur(4px); }
-        .btn-spin { width: 100%; padding: 20px; border-radius: 18px; border: none; background: linear-gradient(135deg, #ff00ff, #6e00ff); color: #fff; font-size: 20px; font-weight: 900; text-transform: uppercase; box-shadow: 0 0 15px rgba(255, 0, 255, 0.4); }
+        .btn-spin { width: 100%; padding: 20px; border-radius: 18px; border: none; background: linear-gradient(135deg, #ff00ff, #6e00ff); color: #fff; font-size: 20px; font-weight: 900; text-transform: uppercase; box-shadow: 0 0 20px rgba(255, 0, 255, 0.5); }
         .copy-box { background: #111; padding: 10px; border-radius: 10px; font-family: monospace; font-size: 11px; color: #0ff; border: 1px solid #333; margin-top: 5px; word-break: break-all; }
         .hidden { display: none !important; }
-        .set-btn { width: 100%; padding: 15px; background: rgba(255,255,255,0.05); border: 1px solid #444; border-radius: 12px; color: #fff; margin-top: 10px; font-weight: bold; }
+        .set-btn { width: 100%; padding: 15px; background: rgba(255,255,255,0.1); border: 1px solid #444; border-radius: 12px; color: #fff; margin-top: 10px; font-weight: bold; }
     </style>
 </head>
 <body>
-    <div class="bg-grid"></div>
     <audio id="bg-mus" loop src="https://files.catbox.moe/78surr.mp3"></audio>
     <div class="nav-top">
         <div class="tab active" id="t1" onclick="sw(1)">ИГРА</div>
