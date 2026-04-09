@@ -1,7 +1,6 @@
 {
-  "name": "ton-casino-bot",
+  "name": "ton-casino",
   "version": "1.0.0",
-  "description": "VIP TON Casino",
   "main": "server.js",
   "scripts": {
     "start": "node server.js"
@@ -10,6 +9,7 @@
     "express": "^4.18.2",
     "mongoose": "^7.0.0",
     "cors": "^2.8.5",
-    "dotenv": "^16.0.3"
+    "axios": "^1.6.0",
+    "node-telegram-bot-api": "^0.61.0"
   }
 }
