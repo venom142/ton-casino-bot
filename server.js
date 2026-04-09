@@ -7,7 +7,9 @@ const PORT = process.env.PORT || 10000;
 const MONGO_URI = process.env.MONGO_URI; 
 const ADMIN_ID = "8475323865";
 
-mongoose.connect(MONGO_URI).then(() => console.log("DB ONLINE"));
+mongoose.connect(MONGO_URI)
+    .then(() => console.log("SERVER ONLINE"))
+    .catch(err => console.error("ОШИБКА БАЗЫ:", err.message));
 
 const User = mongoose.model('User', { 
     uid: String, 
@@ -18,21 +20,25 @@ app.use(cors());
 app.use(express.json());
 
 app.post('/api/sync', async (req, res) => {
-    let u = await User.findOne({ uid: req.body.uid.toString() });
-    if (!u) u = await User.create({ uid: req.body.uid.toString() });
-    res.json(u);
+    try {
+        let u = await User.findOne({ uid: req.body.uid.toString() });
+        if (!u) u = await User.create({ uid: req.body.uid.toString() });
+        res.json(u);
+    } catch(e) { res.status(500).json({err: e.message}); }
 });
 
 app.post('/api/spin', async (req, res) => {
-    const { uid, bet } = req.body;
-    let u = await User.findOne({ uid: uid.toString() });
-    if (!u || u.balance < bet) return res.json({ err: "МАЛО TON" });
-    u.balance = Number((u.balance - bet).toFixed(2));
-    const items = ['🍒','7️⃣','💎','💰','⭐','🎱'];
-    const r = [items[Math.floor(Math.random()*6)], items[Math.floor(Math.random()*6)], items[Math.floor(Math.random()*6)]];
-    if(r[0] === r[1] && r[1] === r[2]) u.balance += (bet * 10);
-    await u.save();
-    res.json({ r, balance: u.balance });
+    try {
+        const { uid, bet } = req.body;
+        let u = await User.findOne({ uid: uid.toString() });
+        if (!u || u.balance < bet) return res.json({ err: "МАЛО TON" });
+        u.balance = Number((u.balance - bet).toFixed(2));
+        const items = ['🍒','7️⃣','💎','💰','⭐','🎱'];
+        const r = [items[Math.floor(Math.random()*6)], items[Math.floor(Math.random()*6)], items[Math.floor(Math.random()*6)]];
+        if(r[0] === r[1] && r[1] === r[2]) u.balance += (bet * 10);
+        await u.save();
+        res.json({ r, balance: u.balance });
+    } catch(e) { res.status(500).json({err: "ОШИБКА БАЗЫ"}); }
 });
 
 app.get('/', (req, res) => {
@@ -49,7 +55,7 @@ app.get('/', (req, res) => {
             background-image: url('https://w.forfun.com/fetch/51/51f50a30707b66710b65670845187747.jpeg');
             background-size: cover; background-position: center;
         }
-        .nav { display: flex; gap: 8px; padding: 15px; background: rgba(0,0,0,0.4); }
+        .nav { display: flex; gap: 8px; padding: 15px; }
         .tab { flex: 1; padding: 12px; background: rgba(26, 26, 46, 0.8); border: 1.5px solid #222; border-radius: 10px; font-size: 11px; font-weight: 800; color: #fff; text-align: center; }
         .tab.active { border-color: #a200ff; background: rgba(162, 0, 255, 0.5); }
 
@@ -59,12 +65,12 @@ app.get('/', (req, res) => {
 
         .bets { display: flex; justify-content: space-between; gap: 6px; }
         .b-btn { flex: 1; padding: 12px; background: rgba(10,10,20,0.9); border: 1.5px solid #333; border-radius: 10px; color: #555; font-size: 13px; font-weight: bold; }
-        .b-btn.active { border-color: #0ff; color: #0ff; box-shadow: 0 0 10px rgba(0,255,255,0.2); }
+        .b-btn.active { border-color: #0ff; color: #0ff; }
 
-        .reels { display: flex; justify-content: center; gap: 10px; margin: 10px 0; }
+        .reels { display: flex; justify-content: center; gap: 10px; }
         .slot { width: 95px; height: 110px; background: rgba(0,0,0,0.9); border: 3.5px solid #f0f; border-radius: 20px; display: flex; align-items: center; justify-content: center; font-size: 48px; }
 
-        .btn-spin { width: 100%; padding: 22px; border-radius: 22px; border: none; background: linear-gradient(to right, #f0f, #7000ff); color: #fff; font-size: 24px; font-weight: 900; box-shadow: 0 8px 20px rgba(162, 0, 255, 0.4); margin-bottom: 20px; }
+        .btn-spin { width: 100%; padding: 22px; border-radius: 22px; border: none; background: linear-gradient(to right, #f0f, #7000ff); color: #fff; font-size: 24px; font-weight: 900; box-shadow: 0 8px 20px rgba(162, 0, 255, 0.4); }
         .pg { padding: 20px; flex: 1; display: flex; flex-direction: column; gap: 15px; justify-content: center; }
         .hidden { display: none !important; }
     </style>
@@ -94,9 +100,9 @@ app.get('/', (req, res) => {
         <div class="bal-card" style="text-align:left">
             <p style="color:#0ff; font-weight:bold; margin-bottom:10px">ДЕПОЗИТ</p>
             <p style="font-size:12px">Адрес:</p>
-            <div style="border:1px dashed #0ff; padding:10px; font-size:11px; word-break:break-all; margin-bottom:15px">UQCy28DFTxwwmULQWw_53PvzuwZqj0spCe1vrUgYQtAvGfvn</div>
-            <p style="font-size:12px">Комментарий (ID):</p>
-            <div style="border:1px dashed #0ff; padding:10px; font-size:14px; color:#0ff">ID_${ADMIN_ID}</div>
+            <div style="border:1.5px dashed #0ff; padding:10px; font-size:11px; word-break:break-all; border-radius:10px">UQCy28DFTxwwmULQWw_53PvzuwZqj0spCe1vrUgYQtAvGfvn</div>
+            <p style="font-size:12px; margin-top:15px">Комментарий (ID):</p>
+            <div style="border:1.5px dashed #0ff; padding:10px; font-size:16px; color:#0ff; border-radius:10px">ID_${ADMIN_ID}</div>
         </div>
     </div>
 
@@ -117,8 +123,10 @@ app.get('/', (req, res) => {
         }
 
         async function sync(){
-            const r = await fetch('/api/sync',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({uid})});
-            const d = await r.json(); document.getElementById('v-bal').innerText = d.balance.toFixed(2);
+            try {
+                const r = await fetch('/api/sync',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({uid})});
+                const d = await r.json(); document.getElementById('v-bal').innerText = d.balance.toFixed(2);
+            } catch(e) {}
         }
 
         function sB(v,e){
@@ -129,24 +137,26 @@ app.get('/', (req, res) => {
 
         async function spin(){
             document.getElementById('sb').disabled = true;
-            const res = await fetch('/api/spin', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({uid, bet: currentBet})});
-            const d = await res.json();
-            if(d.err) { tg.showAlert(d.err); document.getElementById('sb').disabled = false; return; }
-            
-            let i = setInterval(() => {
-                document.getElementById('s1').innerText = ['🍒','7️⃣','💎','💰','⭐','🎱'][Math.floor(Math.random()*6)];
-                document.getElementById('s2').innerText = ['🍒','7️⃣','💎','💰','⭐','🎱'][Math.floor(Math.random()*6)];
-                document.getElementById('s3').innerText = ['🍒','7️⃣','💎','💰','⭐','🎱'][Math.floor(Math.random()*6)];
-            }, 100);
+            try {
+                const res = await fetch('/api/spin', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({uid, bet: currentBet})});
+                const d = await res.json();
+                if(d.err) { tg.showAlert(d.err); document.getElementById('sb').disabled = false; return; }
+                
+                let i = setInterval(() => {
+                    document.getElementById('s1').innerText = ['🍒','7️⃣','💎','💰','⭐','🎱'][Math.floor(Math.random()*6)];
+                    document.getElementById('s2').innerText = ['🍒','7️⃣','💎','💰','⭐','🎱'][Math.floor(Math.random()*6)];
+                    document.getElementById('s3').innerText = ['🍒','7️⃣','💎','💰','⭐','🎱'][Math.floor(Math.random()*6)];
+                }, 100);
 
-            setTimeout(() => {
-                clearInterval(i);
-                document.getElementById('s1').innerText = d.r[0];
-                document.getElementById('s2').innerText = d.r[1];
-                document.getElementById('s3').innerText = d.r[2];
-                document.getElementById('v-bal').innerText = d.balance.toFixed(2);
-                document.getElementById('sb').disabled = false;
-            }, 1000);
+                setTimeout(() => {
+                    clearInterval(i);
+                    document.getElementById('s1').innerText = d.r[0];
+                    document.getElementById('s2').innerText = d.r[1];
+                    document.getElementById('s3').innerText = d.r[2];
+                    document.getElementById('v-bal').innerText = d.balance.toFixed(2);
+                    document.getElementById('sb').disabled = false;
+                }, 1000);
+            } catch(e) { tg.showAlert("ОШИБКА СЕТИ"); document.getElementById('sb').disabled = false; }
         }
 
         function sw(n){
@@ -161,4 +171,4 @@ app.get('/', (req, res) => {
 </html>`);
 });
 
-app.listen(PORT, () => console.log("LIVE"));
+app.listen(PORT, () => console.log("SERVER ONLINE"));
