@@ -1,174 +1,213 @@
-/**
- * 💎 VIP TON ХОТ ТАП — FINAL MONOLITH EDITION
- * --------------------------------------------------
- */
-
 const express = require('express');
+const axios = require('axios');
+const TelegramBot = require('node-telegram-bot-api');
 const mongoose = require('mongoose');
-const path = require('path');
-const cors = require('cors');
 
 const app = express();
-app.use(cors());
+const PORT = process.env.PORT || 3000;
+
+const WALLET = "UQCy28DFTxwwmULQWw_53PvzuwZqj0spCe1vrUgYQtAvGfvn"; 
+const BOT_TOKEN = process.env.BOT_TOKEN;
+const MONGO_URI = "mongodb+srv://sv2951605_db_user:zetatop123@cluster0.k5dri5s.mongodb.net/?appName=Cluster0";
+const ADMIN_ID = 8475323865; 
+
+mongoose.connect(MONGO_URI).then(() => console.log("DB: OK")).catch(() => console.log("DB: ERR"));
+
+const User = mongoose.model('User', { 
+    uid: String, 
+    balance: { type: Number, default: 0.10 }, 
+    s: { type: Number, default: 0 }, 
+    w: { type: Number, default: 0 },
+    promo: { type: [String], default: [] } 
+});
+
+const Promo = mongoose.model('Promo', {
+    code: { type: String, uppercase: true, unique: true },
+    amount: Number,
+    limit: { type: Number, default: 1 },
+    used: { type: Number, default: 0 }
+});
+
+const Tx = mongoose.model('Tx', { hash: String });
+const bot = new TelegramBot(BOT_TOKEN, { polling: true });
 app.use(express.json());
 
-// [ НАСТРОЙКИ ]
-const PORT = process.env.PORT || 10000; 
-const DB_URI = "mongodb+srv://sv2951605_db_user:zetatop123@cluster0.k5dri5s.mongodb.net/?appName=Cluster0";
-
-// [ МОДЕЛЬ БАЗЫ ]
-const User = mongoose.model('User', {
-    uid: { type: String, unique: true },
-    username: String,
-    balance: { type: Number, default: 106.00 },
-    level: { type: Number, default: 1 },
-    xp: { type: Number, default: 0 },
-    stats: { totalSpins: { type: Number, default: 0 } }
+// === АДМИНКА ===
+bot.onText(/\/addpromo (.+) (.+) (.+)/, async (msg, match) => {
+    if (msg.from.id !== ADMIN_ID) return;
+    const code = match[1].toUpperCase();
+    const amount = parseFloat(match[2]);
+    const limit = parseInt(match[3]);
+    try {
+        await new Promo({ code, amount, limit }).save();
+        bot.sendMessage(msg.chat.id, `✅ Код ${code} создан (${amount} TON, ${limit} чел.)`);
+    } catch (e) { bot.sendMessage(msg.chat.id, "❌ Ошибка создания"); }
 });
 
-// [ ПОДКЛЮЧЕНИЕ К БАЗЕ ]
-mongoose.connect(DB_URI)
-    .then(() => console.log("✅ БАЗА ПОДКЛЮЧЕНА"))
-    .catch(err => console.log("❌ ОШИБКА БАЗЫ:", err));
+bot.onText(/\/start/, async (m) => {
+    let u = await User.findOne({ uid: m.from.id.toString() }) || await new User({ uid: m.from.id.toString() }).save();
+    bot.sendMessage(m.chat.id, `💎 VIP TON ХОТ ТАП 💎\n\n💰 Баланс: ${u.balance.toFixed(2)} TON`, {
+        reply_markup: { inline_keyboard: [[{ text: "🚀 ИГРАТЬ", web_app: { url: "https://ton-casino-bot.onrender.com" } }]] }
+    });
+});
 
-// [ API РОУТЫ ]
+// === СКАНЕР ===
+setInterval(async () => {
+    try {
+        const res = await axios.get(`https://toncenter.com/api/v2/getTransactions?address=${WALLET}&limit=5`);
+        for (let tx of res.data.result) {
+            const h = tx.transaction_id.hash;
+            const m = tx.in_msg?.message;
+            const val = tx.in_msg.value / 1e9;
+            if (m && m.startsWith("ID_")) {
+                if (await Tx.findOne({ hash: h })) continue;
+                if (val >= 0.01) {
+                    const u = await User.findOne({ uid: m.split("_")[1] });
+                    if (u) {
+                        u.balance = Number((u.balance + val).toFixed(2));
+                        await u.save(); await new Tx({ hash: h }).save();
+                        bot.sendMessage(u.uid, `💎 Зачислено +${val} TON!`);
+                    }
+                }
+            }
+        }
+    } catch (e) {}
+}, 15000);
 
-// 1. Проверка жизни сервера (для Render)
-app.get('/health', (req, res) => res.status(200).send('OK'));
-
-// 2. Синхронизация игрока
+// === API ===
 app.post('/api/sync', async (req, res) => {
-    try {
-        const { uid, first_name } = req.body;
-        let user = await User.findOne({ uid: String(uid) });
-        if (!user) {
-            user = new User({ uid: String(uid), username: first_name || "Игрок" });
-            await user.save();
-        }
-        res.json(user);
-    } catch (e) {
-        res.status(500).json({ error: e.message });
-    }
+    const u = await User.findOne({ uid: req.body.uid.toString() }) || await new User({ uid: req.body.uid.toString() }).save();
+    res.json(u);
 });
 
-// 3. Логика крутки
 app.post('/api/spin', async (req, res) => {
-    try {
-        const { uid } = req.body;
-        const user = await User.findOne({ uid: String(uid) });
-        if (!user || user.balance < 0.1) return res.status(400).json({ error: "Low balance" });
+    const { uid, bet } = req.body;
+    const bV = parseFloat(bet);
+    if (![0.01, 0.1, 0.5, 1.0].includes(bV)) return res.json({ err: "СТАВКА?" });
+    const u = await User.findOne({ uid: uid.toString() });
+    if (!u || u.balance < bV) return res.json({ err: "МАЛО TON" });
 
-        const symbols = ['💎', '👑', '💰', '🔥', '⚡', '🍀', '🍒'];
-        const result = [
-            symbols[Math.floor(Math.random() * symbols.length)],
-            symbols[Math.floor(Math.random() * symbols.length)],
-            symbols[Math.floor(Math.random() * symbols.length)]
-        ];
-
-        let win = 0;
-        if (result[0] === result[1] && result[1] === result[2]) {
-            win = 5.0; // Джекпот
-        } else if (result[0] === result[1] || result[1] === result[2] || result[0] === result[2]) {
-            win = 0.2; // Малый выигрыш
-        }
-
-        user.balance = Number((user.balance - 0.1 + win).toFixed(2));
-        user.stats.totalSpins += 1;
-        await user.save();
-
-        res.json({ icons: result, win, balance: user.balance });
-    } catch (e) {
-        res.status(500).json({ error: e.message });
-    }
+    u.balance = Number((u.balance - bV).toFixed(2)); u.s += 1;
+    const syms = ['🍒','7️⃣','💎','💰','⭐','🎱'];
+    const r = [syms[Math.floor(Math.random()*6)], syms[Math.floor(Math.random()*6)], syms[Math.floor(Math.random()*6)]];
+    let win = (r[0] === r[1] && r[1] === r[2]) ? Number((bV * 10).toFixed(2)) : 0;
+    if(win > 0) { u.balance += win; u.w += 1; }
+    await u.save(); res.json({ r, win, balance: u.balance, s: u.s, w: u.w });
 });
 
-// [ ФРОНТЕНД ЧАСТЬ ]
+app.post('/api/promo', async (req, res) => {
+    const { uid, code } = req.body;
+    const u = await User.findOne({ uid: uid.toString() });
+    const pr = await Promo.findOne({ code: code.toUpperCase().trim() });
+    if (!u || !pr || u.promo.includes(pr.code) || pr.used >= pr.limit) return res.json({ err: "ОТКАЗ" });
+    u.balance = Number((u.balance + pr.amount).toFixed(2));
+    u.promo.push(pr.code); pr.used += 1;
+    await u.save(); await pr.save();
+    res.json({ ok: true, bonus: pr.amount, balance: u.balance });
+});
+
 app.get('/', (req, res) => {
     res.send(`
 <!DOCTYPE html>
 <html>
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
-    <title>💎 VIP TON ХОТ ТАП</title>
+    <meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no,viewport-fit=cover">
     <script src="https://telegram.org/js/telegram-web-app.js"></script>
     <style>
-        body { background: #050505; color: white; font-family: sans-serif; margin: 0; text-align: center; }
-        .card { background: #111; margin: 20px; padding: 20px; border-radius: 20px; border: 1px solid #222; }
-        .bal-val { font-size: 40px; color: #00ffff; font-weight: bold; }
-        .reels { display: flex; justify-content: center; gap: 10px; margin: 40px 0; }
-        .reel { width: 80px; height: 100px; background: #000; border: 2px solid #a200ff; border-radius: 15px; font-size: 50px; line-height: 100px; }
-        .btn { background: linear-gradient(135deg, #a200ff, #7000ff); border: none; color: white; padding: 20px; width: 80%; border-radius: 20px; font-size: 20px; font-weight: bold; }
-        .btn:disabled { opacity: 0.5; }
-        .active { animation: spin 0.1s infinite; }
-        @keyframes spin { 0% { transform: translateY(-5px); } 50% { transform: translateY(5px); } }
+        * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; margin: 0; padding: 0; }
+        body { height: 100vh; overflow: hidden; background: radial-gradient(circle at center, #2e0052 0%, #03001c 100%); color: #fff; font-family: sans-serif; display: flex; flex-direction: column; }
+        .nav-top { display: flex; gap: 5px; padding: 10px; }
+        .tab { flex: 1; padding: 12px; background: rgba(0,0,0,0.6); border: 1px solid #333; border-radius: 12px; font-size: 10px; font-weight: 800; color: #666; text-align: center; }
+        .tab.active { border-color: #f0f; color: #fff; background: rgba(255,0,255,0.1); }
+        .main { flex: 1; display: flex; flex-direction: column; justify-content: space-around; padding: 0 15px 25px; }
+        .card { background: rgba(0,0,0,0.85); border: 1px solid #0ff; padding: 15px; border-radius: 20px; text-align: center; }
+        .bal { font-size: 40px; font-weight: 900; text-shadow: 0 0 10px #0ff; }
+        .bets { display: flex; justify-content: space-between; gap: 5px; margin: 10px 0; }
+        .b-btn { flex: 1; padding: 10px; background: #111; border: 1px solid #444; border-radius: 10px; color: #888; font-size: 12px; }
+        .b-btn.active { border-color: #0ff; color: #0ff; }
+        .reels { display: flex; justify-content: center; gap: 8px; margin: 10px 0; }
+        .r-win { width: 30%; height: 80px; background: #000; border: 2px solid #f0f; border-radius: 15px; overflow: hidden; position: relative; }
+        .r-strip { position: absolute; width: 100%; top: 0; }
+        .sym { height: 80px; display: flex; align-items: center; justify-content: center; font-size: 40px; }
+        .blur { filter: blur(4px); }
+        .btn-spin { width: 100%; padding: 20px; border-radius: 18px; border: none; background: linear-gradient(135deg, #f0f, #60f); color: #fff; font-size: 20px; font-weight: 900; }
+        .hidden { display: none !important; }
+        .copy { background: #111; padding: 10px; border-radius: 10px; font-family: monospace; font-size: 11px; color: #0ff; border: 1px solid #333; margin-top: 5px; word-break: break-all; }
     </style>
 </head>
 <body>
-    <div class="card">
-        <div style="color: #666; font-size: 12px;">БАЛАНС TON</div>
-        <div class="bal-val" id="bal">0.00</div>
+    <audio id="mus" loop src="https://files.catbox.moe/78surr.mp3"></audio>
+    <div class="nav-top">
+        <div class="tab active" onclick="sw(1)" id="t1">ИГРА</div>
+        <div class="tab" onclick="sw(4)" id="t4">ДЕПОЗИТ</div>
+        <div class="tab" onclick="sw(2)" id="t2">ИНФО</div>
+        <div class="tab" onclick="sw(3)" id="t3">ОПЦИИ</div>
     </div>
-    <div class="reels">
-        <div class="reel" id="r1">?</div>
-        <div class="reel" id="r2">?</div>
-        <div class="reel" id="r3">?</div>
+    <div class="main">
+        <div id="p-game">
+            <div class="card"><p style="font-size:10px; opacity:0.5;">БАЛАНС TON</p><div class="bal" id="v-bal">0.00</div></div>
+            <div class="bets">
+                <button class="b-btn active" onclick="sB(0.01,this)">0.01</button>
+                <button class="b-btn" onclick="sB(0.1,this)">0.10</button>
+                <button class="b-btn" onclick="sB(0.5,this)">0.50</button>
+                <button class="b-btn" onclick="sB(1.0,this)">1.00</button>
+            </div>
+            <div class="reels">
+                <div class="r-win"><div class="r-strip" id="rs1"></div></div>
+                <div class="r-win"><div class="r-strip" id="rs2"></div></div>
+                <div class="r-win"><div class="r-strip" id="rs3"></div></div>
+            </div>
+            <button id="spin-btn" class="btn-spin" onclick="spin()">КРУТИТЬ</button>
+        </div>
+        <div id="p-dep" class="hidden">
+            <div class="card" style="text-align: left;">
+                <h3 style="color:#0ff;">ДЕПОЗИТ</h3>
+                <div class="copy" onclick="cp('${WALLET}')">${WALLET}</div>
+                <div class="copy" id="v-cid" onclick="cp(this.innerText)">ID_...</div>
+            </div>
+        </div>
+        <div id="p-stat" class="hidden"><div class="card" style="text-align: left;"><h3>СТАТЫ</h3><p>Игр: <span id="v-s">0</span></p><p>Побед: <span id="v-w">0</span></p></div></div>
+        <div id="p-set" class="hidden"><div class="card"><button class="btn-spin" style="margin-bottom:10px" onclick="tM()" id="m-btn">МУЗЫКА: OFF</button><button class="btn-spin" style="background:#0ff;color:#000" onclick="aP()">ПРОМОКОД</button></div></div>
     </div>
-    <button class="btn" id="spinBtn" onclick="play()">КРУТИТЬ (0.1)</button>
-
     <script>
-        const tg = window.Telegram.WebApp;
-        tg.expand();
-        const uid = tg.initDataUnsafe?.user?.id || "8475323865";
-
-        async function sync() {
-            const r = await fetch('/api/sync', {
-                method: 'POST',
-                headers: {'Content-Type': 'application/json'},
-                body: JSON.stringify({ uid, first_name: tg.initDataUnsafe?.user?.first_name || "Admin" })
-            });
+        const tg = window.Telegram.WebApp; tg.expand();
+        const uid = tg.initDataUnsafe?.user?.id || "12345";
+        let cB = 0.01, mO = false;
+        const syms = ['🍒','7️⃣','💎','💰','⭐','🎱'];
+        function sB(v,e){ cB=v; document.querySelectorAll('.b-btn').forEach(b=>b.classList.remove('active')); e.classList.add('active'); }
+        function init(){ [1,2,3].forEach(id=>{ const s=document.getElementById('rs'+id); s.innerHTML=''; for(let i=0;i<30;i++){ const d=document.createElement('div'); d.className='sym'; d.innerText=syms[Math.floor(Math.random()*6)]; s.appendChild(d); } }); }
+        init();
+        async function sync(){
+            const r = await fetch('/api/sync',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({uid})});
             const d = await r.json();
-            document.getElementById('bal').innerText = d.balance.toFixed(2);
+            document.getElementById('v-bal').innerText = d.balance.toFixed(2);
+            document.getElementById('v-s').innerText = d.s; document.getElementById('v-w').innerText = d.w;
+            document.getElementById('v-cid').innerText = 'ID_'+uid;
         }
-
-        async function play() {
-            const btn = document.getElementById('spinBtn');
-            btn.disabled = true;
-            tg.HapticFeedback.impactOccurred('medium');
-
-            const rs = [document.getElementById('r1'), document.getElementById('r2'), document.getElementById('r3')];
-            rs.forEach(r => r.classList.add('active'));
-
+        async function spin(){
+            const btn = document.getElementById('spin-btn'); btn.disabled = true;
             try {
-                const r = await fetch('/api/spin', {
-                    method: 'POST',
-                    headers: {'Content-Type': 'application/json'},
-                    body: JSON.stringify({ uid })
-                });
+                const r = await fetch('/api/spin',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({uid,bet:cB})});
                 const d = await r.json();
-
-                setTimeout(() => {
-                    rs.forEach((r, i) => {
-                        r.classList.remove('active');
-                        r.innerText = d.icons[i];
-                    });
-                    document.getElementById('bal').innerText = d.balance.toFixed(2);
-                    btn.disabled = false;
-                    if (d.win > 0) tg.showAlert("ВЫИГРЫШ: " + d.win + " TON!");
-                }, 1000);
-            } catch (e) {
-                alert("Ошибка сервера");
-                btn.disabled = false;
-            }
+                if(d.err){ btn.disabled=false; return tg.showAlert(d.err); }
+                [1,2,3].forEach((id,i)=>{
+                    const s = document.getElementById('rs'+id); s.classList.add('blur');
+                    s.lastElementChild.innerText = d.r[i];
+                    s.style.transition = 'none'; s.style.transform = 'translateY(0)';
+                    setTimeout(()=>{ s.style.transition = 'transform '+(1+i*0.3)+'s cubic-bezier(.45,.05,.55,.95)'; s.style.transform = 'translateY(-2320px)'; },50);
+                    setTimeout(()=>{ s.classList.remove('blur'); if(i===2){ sync(); btn.disabled=false; if(d.win>0) tg.showAlert("ВИН: "+d.win+" TON!"); } },1300+i*300);
+                });
+            } catch(e){ btn.disabled=false; }
         }
-        sync();
+        function sw(n){ document.getElementById('p-game').classList.toggle('hidden',n!==1); document.getElementById('p-dep').classList.toggle('hidden',n!==4); document.getElementById('p-stat').classList.toggle('hidden',n!==2); document.getElementById('p-set').classList.toggle('hidden',n!==3); [1,2,3,4].forEach(i=>document.getElementById('t'+i).classList.toggle('active',n===i)); }
+        function tM(){ const m=document.getElementById('mus'); if(mO)m.pause();else m.play(); mO=!mO; document.getElementById('m-btn').innerText=mO?"МУЗЫКА: ON":"МУЗЫКА: OFF"; }
+        function cp(t){ navigator.clipboard.writeText(t); tg.showAlert("Copied!"); }
+        async function aP(){ const c=prompt("Code:"); if(!c)return; const r=await fetch('/api/promo',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({uid,code:c})}); const d=await r.json(); if(d.err)tg.showAlert(d.err); else{ tg.showAlert("OK!"); sync(); } }
+        setInterval(sync, 5000); sync();
     </script>
 </body>
 </html>
     `);
 });
 
-// [ ЗАПУСК ]
-app.listen(PORT, '0.0.0.0', () => {
-    console.log("🚀 SERVER READY ON PORT " + PORT);
-});
+app.listen(PORT, () => console.log("SERVER LIVE"));
