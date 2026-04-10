@@ -12,7 +12,7 @@ const WALLET = "UQCy28DFTxwwmULQWw_53PvzuwZqj0spCe1vrUgYQtAvGfvn";
 const BOT_TOKEN = process.env.BOT_TOKEN;
 const MONGO_URI = "mongodb+srv://sv2951605_db_user:zetatop123@cluster0.k5dri5s.mongodb.net/?appName=Cluster0";
 const ADMIN_ID = "8475323865"; 
-const APP_URL = "https://твой-проект.onrender.com"; // <--- СЮДА ССЫЛКУ
+const APP_URL = "https://ton-casino-bot.onrender.com"; 
 
 // ПОДКЛЮЧЕНИЕ К БД С ОБРАБОТКОЙ ОШИБОК
 mongoose.connect(MONGO_URI)
