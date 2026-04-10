@@ -56,18 +56,13 @@ app.post('/api/spin', async (req, res) => {
     const { uid, bet } = req.body;
     const betNum = parseFloat(bet);
     if (betNum < 0.01 || betNum > 1) return res.json({ err: "СТАВКА ОТ 0.01 ДО 1" });
-    
     const u = await User.findOne({ uid: uid.toString() });
     if (!u || u.balance < betNum) return res.json({ err: "МАЛО TON" });
-    
     u.balance = Number((u.balance - betNum).toFixed(2)); u.s += 1;
     const syms = ['🍒','7️⃣','💎','💰','⭐','🎱'];
-    
     let r = (Math.random() < 0.12) ? Array(3).fill(syms[Math.floor(Math.random()*6)]) : [syms[Math.floor(Math.random()*6)], syms[Math.floor(Math.random()*6)], syms[Math.floor(Math.random()*6)]];
-    
     let win = (r[0] === r[1] && r[1] === r[2]) ? Number((betNum * 10).toFixed(2)) : 0;
     u.balance += win; if(win>0) u.w += 1; await u.save();
-    
     res.json({ r, win, balance: u.balance, s: u.s, w: u.w });
 });
 
@@ -87,11 +82,11 @@ app.get('/', (req, res) => {
         .main { flex: 1; padding: 15px; display: flex; flex-direction: column; justify-content: space-around; }
         .card { background: rgba(0,0,0,0.85); border: 1px solid #0ff; padding: 20px; border-radius: 20px; text-align: center; }
         .btn { width: 100%; padding: 16px; border-radius: 15px; border: none; background: linear-gradient(135deg, #f0f, #60f); color: #fff; font-weight: 900; margin-top: 10px; }
-        .hidden { display: none !important; }
+        .btn:disabled { opacity: 0.5; filter: grayscale(1); }
         input, select { width: 100%; padding: 12px; background: #111; border: 1px solid #333; color: #0ff; border-radius: 10px; margin: 5px 0; text-align: center; font-size: 16px; appearance: none; }
         .reels { display: flex; justify-content: center; gap: 8px; margin: 15px 0; }
         .window { width: 30%; height: 90px; background: #000; border: 3px solid #f0f; border-radius: 15px; overflow: hidden; position: relative; box-shadow: inset 0 0 15px rgba(255,0,255,0.5); }
-        .strip { position: absolute; width: 100%; top: 0; }
+        .strip { position: absolute; width: 100%; top: 0; left: 0; }
         .sym { height: 90px; display: flex; align-items: center; justify-content: center; font-size: 45px; }
     </style>
 </head>
@@ -109,12 +104,9 @@ app.get('/', (req, res) => {
             <div class="card">
                 <p style="font-size:10px; opacity:0.6;">БАЛАНС TON</p>
                 <div style="font-size:40px; font-weight:900; color:#0ff;" id="v-bal">0.00</div>
-                <p style="font-size:10px; margin-top:10px;">ВЫБЕРИТЕ СТАВКУ:</p>
-                <select id="bet-val">
-                    <option value="0.01">0.01 TON</option>
-                    <option value="0.05">0.05 TON</option>
-                    <option value="0.10">0.10 TON</option>
-                    <option value="0.50">0.50 TON</option>
+                <select id="bet-val" style="margin-top:10px;">
+                    <option value="0.01">0.01 TON</option><option value="0.05">0.05 TON</option>
+                    <option value="0.10">0.10 TON</option><option value="0.50">0.50 TON</option>
                     <option value="1.00">1.00 TON</option>
                 </select>
             </div>
@@ -138,10 +130,9 @@ app.get('/', (req, res) => {
         <div id="p3" class="hidden">
             <div class="card">
                 <h3>ДЕПОЗИТ</h3>
-                <p style="font-size:11px; opacity:0.7;">Адрес:</p>
+                <p style="font-size:11px; opacity:0.7;">Адрес для перевода:</p>
                 <div style="background:#111; padding:10px; border-radius:10px; font-size:10px; color:#0ff; border:1px solid #333; word-break:break-all;">${WALLET}</div>
-                <p style="font-size:11px; opacity:0.7; margin-top:10px;">ID для комментария:</p>
-                <div id="v-cid" style="background:#111; padding:10px; border-radius:10px; color:#f0f; border:1px solid #f0f; font-weight:bold;">ID_...</div>
+                <div id="v-cid" style="margin-top:10px; color:#f0f; font-weight:bold;">ID_...</div>
             </div>
         </div>
 
@@ -151,12 +142,9 @@ app.get('/', (req, res) => {
                 <input type="range" id="vol" min="0" max="1" step="0.1" value="0.5" oninput="setV(this.value)">
                 <button class="btn" style="background:#333;" onclick="tglM()" id="m-btn">ВКЛЮЧИТЬ МУЗЫКУ</button>
             </div>
-
             <div class="card hidden" id="adm-box" style="border-color:#ff0; margin-top:10px;">
                 <h3 style="color:#ff0">АДМИН</h3>
-                <input id="ad-c" placeholder="КОД">
-                <input id="ad-s" type="number" placeholder="СУММА">
-                <input id="ad-l" type="number" placeholder="ЛИМИТ">
+                <input id="ad-c" placeholder="КОД"><input id="ad-s" type="number" placeholder="СУММА"><input id="ad-l" type="number" placeholder="ЛИМИТ">
                 <button class="btn" style="background:#ff0; color:#000;" onclick="creP()">СОЗДАТЬ</button>
             </div>
         </div>
@@ -184,6 +172,15 @@ app.get('/', (req, res) => {
             if(uid.toString() === "${ADMIN_ID}") document.getElementById('adm-box').classList.remove('hidden');
         }
 
+        function buildReel(id) {
+            const s = document.getElementById('rs'+id);
+            s.innerHTML = '';
+            for(let i=0; i<30; i++) {
+                const d = document.createElement('div'); d.className='sym';
+                d.innerText = syms[Math.floor(Math.random()*6)]; s.appendChild(d);
+            }
+        }
+
         async function spin() {
             const btn = document.getElementById('s-btn'); 
             const bet = document.getElementById('bet-val').value;
@@ -195,17 +192,29 @@ app.get('/', (req, res) => {
 
             [1,2,3].forEach((id, i) => {
                 const s = document.getElementById('rs'+id);
+                // Подменяем самый последний символ на результат сервера
+                s.children[29].innerText = d.r[i];
+                
                 s.style.transition = 'none';
                 s.style.transform = 'translateY(0)';
-                s.lastElementChild.innerText = d.r[i];
                 
                 setTimeout(() => {
-                    s.style.transition = 'transform 1.3s cubic-bezier(0.25, 0.1, 0.25, 1)';
-                    s.style.transform = 'translateY(-1260px)';
-                }, i * 450); 
+                    s.style.transition = 'transform ' + (1.5 + i*0.6) + 's cubic-bezier(0.1, 0, 0, 1)';
+                    s.style.transform = 'translateY(-2610px)'; // (30-1) * 90px
+                }, 50);
             });
 
-            setTimeout(() => { sync(); btn.disabled = false; if(d.win > 0) tg.showAlert("ВЫИГРЫШ: "+d.win+" TON!"); }, 2400);
+            setTimeout(() => { 
+                sync(); 
+                btn.disabled = false; 
+                if(d.win > 0) tg.showAlert("ВЫИГРЫШ: "+d.win+" TON!");
+                // Пересобираем ленты для следующего раза (без анимации)
+                [1,2,3].forEach(id => {
+                    const s = document.getElementById('rs'+id);
+                    s.style.transition = 'none';
+                    s.style.transform = 'translateY(0)';
+                });
+            }, 3500);
         }
 
         async function useP() {
@@ -226,19 +235,11 @@ app.get('/', (req, res) => {
             document.getElementById('t'+i).classList.toggle('active', i===n);
         });}
 
-        function init() {
-            [1,2,3].forEach(id => {
-                const s = document.getElementById('rs'+id);
-                for(let i=0; i<15; i++) {
-                    const d = document.createElement('div'); d.className='sym';
-                    d.innerText = syms[Math.floor(Math.random()*6)]; s.appendChild(d);
-                }
-            });
-        }
-        init(); sync();
+        buildReel(1); buildReel(2); buildReel(3);
+        sync();
     </script>
 </body>
 </html>
     `);
 });
-app.listen(PORT, () => console.log("SERVER V1.4 OK"));
+app.listen(PORT, () => console.log("SERVER V1.5 FINAL ANIMATION OK"));
