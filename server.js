@@ -21,13 +21,6 @@ const User = mongoose.model('User', {
     promo: { type: [String], default: [] } 
 });
 
-const Promo = mongoose.model('Promo', {
-    code: { type: String, uppercase: true, unique: true },
-    amount: Number,
-    limit: { type: Number, default: 1 },
-    used: { type: Number, default: 0 }
-});
-
 const Tx = mongoose.model('Tx', { hash: String });
 const bot = new TelegramBot(BOT_TOKEN, { polling: true });
 app.use(express.json());
@@ -39,7 +32,7 @@ bot.onText(/\/start/, async (m) => {
     });
 });
 
-// === API SPIN С УЛУЧШЕННЫМИ ШАНСАМИ ===
+// === ПОЧИНЕННЫЙ API SPIN (Барабаны вернутся!) ===
 app.post('/api/spin', async (req, res) => {
     const { uid, bet } = req.body;
     const betVal = parseFloat(bet);
@@ -50,7 +43,7 @@ app.post('/api/spin', async (req, res) => {
     const syms = ['🍒','7️⃣','💎','💰','⭐','🎱'];
     let r;
     
-    // ШАНС ПОБЕДЫ ~12%
+    // ШАНС ПОБЕДЫ ~12% (оставляем, чтобы был азарт)
     if (Math.random() < 0.12) {
         const winSym = syms[Math.floor(Math.random() * syms.length)];
         r = [winSym, winSym, winSym];
@@ -69,6 +62,7 @@ app.post('/api/spin', async (req, res) => {
     }
     
     await u.save(); 
+    // ВАЖНО: возвращаем баланс, игры и победы, чтобы UI обновился
     res.json({ r, win, balance: u.balance, s: u.s, w: u.w });
 });
 
@@ -98,16 +92,27 @@ app.get('/', (req, res) => {
         .main-container { flex: 1; display: flex; flex-direction: column; justify-content: space-around; padding: 0 15px 25px; z-index: 5; }
         .card { background: rgba(0,0,0,0.85); border: 1px solid #0ff; padding: 20px; border-radius: 20px; text-align: center; box-shadow: 0 0 15px rgba(0,255,255,0.3); }
         .bal { font-size: 40px; font-weight: 900; color: #fff; text-shadow: 0 0 10px #0ff; }
+        
+        /* ЧИНЮ БАРАБАНЫ */
         .reels { display: flex; justify-content: center; gap: 8px; margin: 15px 0; }
         .reel-window { width: 30%; height: 80px; background: rgba(0,0,0,0.9); border: 2px solid #f0f; border-radius: 15px; overflow: hidden; position: relative; box-shadow: inset 0 0 10px #f0f; }
-        .reel-strip { position: absolute; width: 100%; display: flex; flex-direction: column; align-items: center; top: 0; }
+        .reel-strip { position: absolute; width: 100%; display: flex; flex-direction: column; align-items: center; top: 0; transition: transform 0.5s ease; }
         .symbol { height: 80px; display: flex; align-items: center; justify-content: center; font-size: 40px; }
+        
         .btn-spin { width: 100%; padding: 20px; border-radius: 18px; border: none; background: linear-gradient(135deg, #ff00ff, #6e00ff); color: #fff; font-size: 20px; font-weight: 900; text-transform: uppercase; box-shadow: 0 0 20px rgba(255, 0, 255, 0.5); }
         .hidden { display: none !important; }
-        .stat-grid { display: flex; justify-content: space-around; margin-top: 15px; }
-        .stat-item { text-align: center; }
-        .stat-val { font-size: 24px; font-weight: 900; color: #fff; }
-        .stat-label { font-size: 9px; color: #0ff; text-transform: uppercase; }
+        
+        /* ЧИНЮ ДЕПОЗИТ */
+        .copy-box { background: #111; padding: 10px; border-radius: 10px; font-family: monospace; font-size: 11px; color: #0ff; border: 1px solid #333; margin-top: 5px; word-break: break-all; margin-bottom: 10px; }
+
+        /* ЧИНЮ СТАТУ (Аккуратно и ровно) */
+        .stat-card { border-color: #f0f; box-shadow: 0 0 15px rgba(255,0,255,0.3); padding: 15px; }
+        .stat-title { color: #f0f; font-size: 18px; font-weight: 800; margin-bottom: 15px; text-shadow: 0 0 5px #f0f; }
+        .stat-grid { display: flex; justify-content: space-around; align-items: center; margin-bottom: 15px; }
+        .stat-item { text-align: center; flex: 1; }
+        .stat-val { font-size: 32px; font-weight: 900; color: #fff; }
+        .stat-label { font-size: 9px; color: #aaa; text-transform: uppercase; margin-top: -5px; }
+        .stat-sep { width: 1px; height: 40px; background: #333; }
     </style>
 </head>
 <body>
@@ -129,20 +134,47 @@ app.get('/', (req, res) => {
         </div>
         
         <div id="p-stat" class="hidden">
-            <div class="card" style="border-color: #f0f; box-shadow: 0 0 15px rgba(255,0,255,0.3);">
-                <h3 style="color: #f0f; margin-bottom: 10px;">СТАТИСТИКА</h3>
+            <div class="card stat-card">
+                <div class="stat-title">СТАТИСТИКА</div>
                 <div class="stat-grid">
                     <div class="stat-item"><div class="stat-val" id="v-s">0</div><div class="stat-label">Игр</div></div>
+                    <div class="stat-sep"></div>
                     <div class="stat-item"><div class="stat-val" id="v-w" style="color: #0ff;">0</div><div class="stat-label">Побед</div></div>
                 </div>
-                <div style="margin-top: 15px; font-size: 12px; color: #aaa;">Удача: <span id="v-luck" style="color:#fff">0</span>%</div>
+                <div style="font-size: 12px; color: #888;">Удача: <span id="v-luck" style="color:#fff">0</span>%</div>
+            </div>
+        </div>
+
+        <div id="p-dep" class="hidden">
+            <div class="card" style="text-align: left; padding: 15px;">
+                <h3 style="color:#0ff; margin-bottom: 10px;">ДЕПОЗИТ</h3>
+                <p style="font-size:11px; color: #ccc; margin-bottom: 8px;">Отправь TON на адрес с твоим ID в комментарии. Баланс пополнится автоматически за минуту.</p>
+                <p style="font-size: 10px; color: #888;">АДРЕС:</p>
+                <div class="copy-box" onclick="cp('${WALLET}')">${WALLET}</div>
+                <p style="font-size: 10px; color: #888;">КОММЕНТАРИЙ (ОБЯЗАТЕЛЬНО):</p>
+                <div class="copy-box" id="v-cid" onclick="cp(this.innerText)" style="color: #f0f; border-color: #f0f;">ID_...</div>
             </div>
         </div>
     </div>
     <script>
-        const tg = window.Telegram.WebApp;
+        const tg = window.Telegram.WebApp; tg.expand();
         const uid = tg.initDataUnsafe?.user?.id || "12345";
         const syms = ['🍒','7️⃣','💎','💰','⭐','🎱'];
+
+        // ИНИЦИАЛИЗАЦИЯ БАРАБАНОВ (чтобы они не были пустыми)
+        function initReels() {
+            [1,2,3].forEach(id => {
+                const s = document.getElementById('rs'+id);
+                s.innerHTML = ''; // Чистим
+                for(let i=0; i<3; i++) { // Добавляем по 3 символа
+                    const div = document.createElement('div');
+                    div.className = 'symbol';
+                    div.innerText = syms[Math.floor(Math.random()*6)];
+                    s.appendChild(div);
+                }
+            });
+        }
+        initReels(); // Запускаем сразу
 
         async function sync() {
             const r = await fetch('/api/sync', { method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify({uid}) });
@@ -150,20 +182,44 @@ app.get('/', (req, res) => {
             document.getElementById('v-bal').innerText = d.balance.toFixed(2);
             document.getElementById('v-s').innerText = d.s; 
             document.getElementById('v-w').innerText = d.w;
+            document.getElementById('v-cid').innerText = 'ID_' + uid;
             const luck = d.s > 0 ? ((d.w / d.s) * 100).toFixed(1) : 0;
             document.getElementById('v-luck').innerText = luck;
+        }
+
+        async function spin() {
+            const btn = document.getElementById('spin-btn');
+            btn.disabled = true;
+            try {
+                const r = await fetch('/api/spin', { method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify({uid, bet: 0.01}) });
+                const d = await r.json();
+                if(d.err) { btn.disabled = false; return tg.showAlert(d.err); }
+                
+                // Простая анимация кручения
+                [1,2,3].forEach((id, i) => {
+                    const strip = document.getElementById('rs'+id);
+                    strip.style.transform = 'translateY(-160px)'; // Крутим вниз
+                    setTimeout(() => {
+                        strip.style.transition = 'none';
+                        strip.style.transform = 'translateY(0)';
+                        strip.firstElementChild.innerText = d.r[i]; // Ставим выпавший символ первым
+                        if(i === 2) { sync(); btn.disabled = false; strip.style.transition = 'transform 0.5s ease'; }
+                    }, 500);
+                });
+            } catch (e) { btn.disabled = false; }
         }
 
         function sw(n) {
             document.getElementById('p-game').classList.toggle('hidden', n !== 1);
             document.getElementById('p-stat').classList.toggle('hidden', n !== 2);
+            document.getElementById('p-dep').classList.toggle('hidden', n !== 4);
             [1,2,4].forEach(i => { if(document.getElementById('t'+i)) document.getElementById('t'+i).classList.toggle('active', n === i) });
         }
+        function cp(t) { navigator.clipboard.writeText(t); tg.showAlert("Скопировано!"); }
         setInterval(sync, 5000); sync();
-        // (Остальные функции spin и initReels остаются как были)
     </script>
 </body>
 </html>
     `);
 });
-app.listen(PORT, () => console.log("SERVER LIVE V0.4"));
+app.listen(PORT, () => console.log("SERVER LIVE V0.5 - REPAIRED"));
