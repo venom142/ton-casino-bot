@@ -1,272 +1,230 @@
+/**
+ * 💎 ULTIMATE TON CASINO ECOSYSTEM 2026
+ * 🚀 ВЕРСИЯ: 4.0 (MEGA MONOLITH)
+ * 🛠 СТЕК: Node.js, Telegraf, Express, MongoDB, CSS3 Next-Gen
+ */
+
 require('dotenv').config();
 const { Telegraf, Markup } = require('telegraf');
 const express = require('express');
 const mongoose = require('mongoose');
 const axios = require('axios');
-const path = require('path');
+const crypto = require('crypto');
 
 // ==========================================
-// ⚙️ КОНФИГУРАЦИЯ (ВСЕ ДАННЫЕ ВШИТЫ)
+// ⚙️ СИСТЕМНАЯ КОНФИГУРАЦИЯ
 // ==========================================
-const BOT_TOKEN = process.env.BOT_TOKEN;
-const MONGO_URI = process.env.MONGO_URI;
+const { 
+    BOT_TOKEN, 
+    MONGO_URI, 
+    TONCENTER_KEY, 
+    PORT = 3000,
+    WEB_URL = 'https://ton-casino-bot.onrender.com'
+} = process.env;
+
 const ADMIN_ID = 5664124314; 
-const TON_WALLET = 'UQDoTj0hCwJbI-9fziRCyUZzO2XHmtcDzuiAiGjxG21G3dIX'; 
-const TON_API_KEY = process.env.TONCENTER_KEY; 
-const WEB_APP_URL = 'https://ton-casino-bot.onrender.com';
-const PORT = process.env.PORT || 3000;
-
-const bot = new Telegraf(BOT_TOKEN);
-const app = express();
-
-// Настройки Express для работы с формами и JSON
-app.use(express.json());
-app.use(express.urlencoded({ extended: true }));
+const TON_WALLET = 'UQDoTj0hCwJbI-9fziRCyUZzO2XHmtcDzuiAiGjxG21G3dIX';
 
 // ==========================================
-// 🗄 ПОДКЛЮЧЕНИЕ БАЗЫ ДАННЫХ
+// 🗄 МОДЕЛИ ДАННЫХ (DATABASE STRUCTURE)
 // ==========================================
-mongoose.connect(MONGO_URI)
-    .then(() => console.log('✅ MongoDB подключена успешно'))
-    .catch(err => console.error('❌ Ошибка подключения к MongoDB:', err));
-
 const UserSchema = new mongoose.Schema({
-    tgId: { type: Number, unique: true },
+    tgId: { type: Number, unique: true, required: true },
     username: String,
-    firstName: String,
+    name: String,
     balance: { type: Number, default: 0 },
-    clicks: { type: Number, default: 0 },
+    totalTaps: { type: Number, default: 0 },
+    referrals: { type: Number, default: 0 },
     lvl: { type: Number, default: 1 },
-    lastUpdate: { type: Date, default: Date.now }
+    isBanned: { type: Boolean, default: false },
+    regDate: { type: Date, default: Date.now }
 });
 
-const PromoSchema = new mongoose.Schema({
-    code: String,
-    reward: Number,
-    limit: Number,
-    usedBy: [Number]
-});
-
-const TransactionSchema = new mongoose.Schema({
+const TxSchema = new mongoose.Schema({
     hash: { type: String, unique: true },
     amount: Number,
-    sender: Number,
-    date: { type: Date, default: Date.now }
+    userId: Number,
+    status: { type: String, default: 'completed' },
+    timestamp: { type: Date, default: Date.now }
 });
 
 const User = mongoose.model('User', UserSchema);
-const Promo = mongoose.model('Promo', PromoSchema);
-const Transaction = mongoose.model('Transaction', TransactionSchema);
+const Transaction = mongoose.model('Transaction', TxSchema);
 
 // ==========================================
-// 💸 АВТОМАТИЧЕСКАЯ ПРОВЕРКА ПЛАТЕЖЕЙ TON
+// 🛰 ИНИЦИАЛИЗАЦИЯ СЕРВИСОВ
 // ==========================================
-async function scanTonTransactions() {
+const bot = new Telegraf(BOT_TOKEN);
+const app = express();
+
+app.use(express.json());
+app.use(express.urlencoded({ extended: true }));
+
+mongoose.connect(MONGO_URI)
+    .then(() => console.log('🟢 [DATABASE] Связь с облаком установлена'))
+    .catch(e => console.error('🔴 [DATABASE] Критическая ошибка:', e));
+
+// ==========================================
+// 💳 СИСТЕМА ПРОВЕРКИ ПЛАТЕЖЕЙ (TONCENTER API)
+// ==========================================
+async function checkPayments() {
     try {
-        const url = `https://toncenter.com/api/v2/getTransactions?address=${TON_WALLET}&limit=15&api_key=${TON_API_KEY}`;
-        const response = await axios.get(url);
-        const txs = response.data.result;
+        const response = await axios.get(`https://toncenter.com/api/v2/getTransactions?address=${TON_WALLET}&limit=20&api_key=${TONCENTER_KEY}`);
+        const data = response.data.result;
 
-        for (const tx of txs) {
+        for (const tx of data) {
             const hash = tx.transaction_id.hash;
-            const value = Number(tx.in_msg.value) / 1000000000; // перевод в TON
-            const comment = tx.in_msg.message; // Тут должен быть TG ID юзера
+            const amount = Number(tx.in_msg.value) / 1e9;
+            const comment = tx.in_msg.message; // ID пользователя в комментарии
 
-            if (value > 0 && comment) {
-                const userId = Number(comment.trim());
-                if (!isNaN(userId)) {
-                    const alreadyExists = await Transaction.findOne({ hash });
-                    if (!alreadyExists) {
-                        const user = await User.findOne({ tgId: userId });
+            if (amount > 0 && comment) {
+                const uid = parseInt(comment.trim());
+                if (!isNaN(uid)) {
+                    const exists = await Transaction.findOne({ hash });
+                    if (!exists) {
+                        const user = await User.findOne({ tgId: uid });
                         if (user) {
-                            user.balance += value;
+                            user.balance += amount;
                             await user.save();
-                            await Transaction.create({ hash, amount: value, sender: userId });
-                            
-                            await bot.telegram.sendMessage(userId, `💰 **Пополнение подтверждено!**\nНа ваш баланс зачислено: ${value.toFixed(2)} TON.`).catch(() => {});
-                            console.log(`[PAYMENT] Зачислено ${value} TON юзеру ${userId}`);
+                            await Transaction.create({ hash, amount, userId: uid });
+                            bot.telegram.sendMessage(uid, `✅ **УСПЕХ!**\nВаш баланс пополнен на **${amount.toFixed(2)} TON**`).catch(() => {});
                         }
                     }
                 }
             }
         }
-    } catch (error) {
-        // Ошибка сканирования (обычно лимиты API)
-    }
+    } catch (e) { /* Игнорируем ошибки сети */ }
 }
-setInterval(scanTonTransactions, 35000); // Проверка каждые 35 секунд
+setInterval(checkPayments, 40000);
 
 // ==========================================
-// 🤖 ЛОГИКА ТЕЛЕГРАМ БОТА
+// 🤖 ТЕЛЕГРАМ БОТ (ADVANCED LOGIC)
 // ==========================================
-
-const getKeyboard = (userId) => {
-    const buttons = [
-        [Markup.button.webApp('🚀 ИГРАТЬ В КАЗИНО', WEB_APP_URL)],
-        [Markup.button.callback('💳 ПОПОЛНИТЬ', 'menu_donate'), Markup.button.callback('🎁 ПРОМОКОД', 'menu_promo')],
-        [Markup.button.callback('👤 ПРОФИЛЬ', 'menu_profile'), Markup.button.callback('📊 ТОП', 'menu_top')]
+const buildKeyboard = (uid) => {
+    let kb = [
+        [Markup.button.webApp('🚀 ЗАПУСТИТЬ ИГРУ', WEB_URL)],
+        [Markup.button.callback('💳 ДОНАТ', 'btn_don'), Markup.button.callback('⚙️ ПРОФИЛЬ', 'btn_prof')],
+        [Markup.button.callback('🏆 ТОП ИГРОКОВ', 'btn_top')]
     ];
-
-    if (userId === ADMIN_ID) {
-        buttons.push([Markup.button.webApp('👑 УПРАВЛЕНИЕ (АДМИНКА)', `${WEB_APP_URL}/admin`)]);
-    }
-
-    return Markup.inlineKeyboard(buttons);
+    if (uid === ADMIN_ID) kb.push([Markup.button.webApp('👑 ПАНЕЛЬ УПРАВЛЕНИЯ', `${WEB_URL}/admin`)]);
+    return Markup.inlineKeyboard(kb);
 };
 
 bot.start(async (ctx) => {
-    const { id, first_name, username } = ctx.from;
-    let user = await User.findOne({ tgId: id });
+    const u = await User.findOneAndUpdate(
+        { tgId: ctx.from.id },
+        { name: ctx.from.first_name, username: ctx.from.username },
+        { upsert: true, new: true }
+    );
+    ctx.replyWithMarkdown(`💎 **TON CASINO ULTIMATE**\n\n💰 Твой баланс: \`${u.balance.toFixed(2)} TON\`\n\n*Добро пожаловать в элиту TON-гейминга!*`, buildKeyboard(ctx.from.id));
+});
 
-    if (!user) {
-        user = await User.create({
-            tgId: id,
-            firstName: first_name,
-            username: username || 'NoName',
-            balance: 0
-        });
-    }
-
-    const welcomeMsg = `💎 **ДОБРО ПОЖАЛОВАТЬ В TON CASINO!** 💎\n\n💰 Твой баланс: **${user.balance.toFixed(2)} TON**\n🆔 Твой ID: \`${id}\` (используй при пополнении)\n\nЖми на кнопку ниже, чтобы начать зарабатывать!`;
-    
-    ctx.replyWithPhoto('https://files.catbox.moe/78surr.mp3', { // Замени картинку если есть
-        caption: welcomeMsg,
+bot.action('btn_prof', async (ctx) => {
+    const u = await User.findOne({ tgId: ctx.from.id });
+    ctx.editMessageText(`👤 **ПРОФИЛЬ ПОЛЬЗОВАТЕЛЯ**\n\n🆔 ID: \`${u.tgId}\`\n📈 Уровень: ${u.lvl}\n🖱 Кликов: ${u.totalTaps}\n💰 Баланс: ${u.balance.toFixed(2)} TON`, {
         parse_mode: 'Markdown',
-        ...getKeyboard(id)
-    }).catch(() => ctx.reply(welcomeMsg, { parse_mode: 'Markdown', ...getKeyboard(id) }));
+        ...Markup.inlineKeyboard([[Markup.button.callback('🔙 НАЗАД', 'btn_main')]])
+    });
 });
 
-// Обработка кнопок меню
-bot.action('menu_profile', async (ctx) => {
-    const user = await User.findOne({ tgId: ctx.from.id });
-    const text = `👤 **ВАШ ПРОФИЛЬ**\n\n🆔 ID: \`${user.tgId}\`\n💰 Баланс: ${user.balance.toFixed(2)} TON\n🖱 Всего кликов: ${user.clicks}\n📈 Уровень: ${user.lvl}`;
-    ctx.editMessageText(text, { parse_mode: 'Markdown', ...Markup.inlineKeyboard([[Markup.button.callback('🔙 НАЗАД', 'to_main')]]) });
+bot.action('btn_don', (ctx) => {
+    ctx.replyWithMarkdown(`💳 **ПОПОЛНЕНИЕ СРЕДСТВ**\n\n1️⃣ Отправьте TON на кошелек:\n\`${TON_WALLET}\`\n\n2️⃣ В комментарии укажите свой ID:\n\`${ctx.from.id}\`\n\n*Средства зачисляются автоматически в течение 5 минут.*`);
 });
 
-bot.action('menu_donate', (ctx) => {
-    const text = `💳 **ПОПОЛНЕНИЕ БАЛАНСА**\n\nДля автоматического пополнения отправьте любую сумму TON на этот кошелек:\n\n\`${TON_WALLET}\`\n\n⚠️ **ВАЖНО:** В комментарии к платежу укажите ваш ID:\n\`${ctx.from.id}\`\n\nБез комментария средства не будут зачислены автоматически!`;
-    ctx.editMessageText(text, { parse_mode: 'Markdown', ...Markup.inlineKeyboard([[Markup.button.callback('🔙 НАЗАД', 'to_main')]]) });
-});
-
-bot.action('menu_promo', (ctx) => {
-    ctx.reply('🎁 Введите ваш промокод:');
-});
-
-bot.on('text', async (ctx) => {
-    if (ctx.message.text.startsWith('/')) return;
-
-    const promoCode = ctx.message.text.trim();
-    const promo = await Promo.findOne({ code: promoCode });
-
-    if (promo) {
-        if (promo.usedBy.includes(ctx.from.id)) {
-            return ctx.reply('❌ Вы уже использовали этот промокод.');
-        }
-        if (promo.usedBy.length >= promo.limit) {
-            return ctx.reply('❌ Лимит активаций промокода исчерпан.');
-        }
-
-        await User.updateOne({ tgId: ctx.from.id }, { $inc: { balance: promo.reward } });
-        await Promo.updateOne({ code: promoCode }, { $push: { usedBy: ctx.from.id } });
-
-        ctx.reply(`✅ Успех! Вы получили ${promo.reward} TON на баланс.`);
-    }
-});
-
-// Админ команды в чате
-bot.command('give', async (ctx) => {
-    if (ctx.from.id !== ADMIN_ID) return;
-    const args = ctx.message.text.split(' ');
-    if (args.length < 3) return ctx.reply('Используй: /give [ID] [СУММА]');
-    
-    const targetId = Number(args[1]);
-    const amount = Number(args[2]);
-    
-    await User.updateOne({ tgId: targetId }, { $inc: { balance: amount } });
-    ctx.reply(`✅ Выдано ${amount} TON пользователю ${targetId}`);
-    bot.telegram.sendMessage(targetId, `🎁 Администратор выдал вам бонус: ${amount} TON!`);
-});
-
-bot.action('to_main', async (ctx) => {
-    const user = await User.findOne({ tgId: ctx.from.id });
-    ctx.editMessageText(`💎 **TON CASINO**\n\n💰 Баланс: ${user.balance.toFixed(2)} TON`, { parse_mode: 'Markdown', ...getKeyboard(ctx.from.id) });
+bot.action('btn_main', async (ctx) => {
+    const u = await User.findOne({ tgId: ctx.from.id });
+    ctx.editMessageText(`💎 **TON CASINO ULTIMATE**\n\n💰 Твой баланс: \`${u.balance.toFixed(2)} TON\``, { parse_mode: 'Markdown', ...buildKeyboard(ctx.from.id) });
 });
 
 bot.launch();
 
 // ==========================================
-// 🌐 ВЕБ-ПРИЛОЖЕНИЕ (ИГРА + АНИМАЦИИ)
+// 🌐 WEB APPLICATION (NEXT-GEN INTERFACE)
 // ==========================================
-
 app.get('/', (req, res) => {
     res.send(`
     <!DOCTYPE html>
     <html lang="ru">
     <head>
         <meta charset="UTF-8">
-        <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
-        <title>TON CASINO GAME</title>
+        <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+        <title>TON CASINO WEB</title>
         <script src="https://telegram.org/js/telegram-web-app.js"></script>
         <style>
-            @import url('https://fonts.googleapis.com/css2?family=Orbitron:wght@400;900&display=swap');
-            body { background: #050505; color: white; font-family: 'Orbitron', sans-serif; margin: 0; height: 100vh; display: flex; flex-direction: column; align-items: center; justify-content: center; overflow: hidden; }
-            .stats { position: absolute; top: 20px; text-align: center; }
-            .balance-label { font-size: 14px; color: #00d4ff; letter-spacing: 3px; }
-            .balance-value { font-size: 50px; font-weight: 900; text-shadow: 0 0 30px #00d4ff; }
-            .btn-container { position: relative; width: 300px; height: 300px; margin-top: 50px; }
-            .main-btn { width: 100%; height: 100%; border-radius: 50%; background: radial-gradient(circle, #0088cc 0%, #002233 100%); border: 10px solid #00d4ff; box-shadow: 0 0 60px rgba(0, 212, 255, 0.4); cursor: pointer; position: relative; z-index: 5; transition: transform 0.05s; outline: none; -webkit-tap-highlight-color: transparent; }
-            .main-btn:active { transform: scale(0.9); box-shadow: 0 0 90px #00d4ff; }
-            .pulse { position: absolute; top: 0; left: 0; width: 100%; height: 100%; border-radius: 50%; border: 4px solid #00d4ff; animation: pulse-ring 2s infinite; pointer-events: none; }
-            @keyframes pulse-ring { 0% { transform: scale(1); opacity: 1; } 100% { transform: scale(1.8); opacity: 0; } }
-            .floating-text { position: absolute; color: #00ffcc; font-size: 30px; font-weight: 900; animation: floatUp 0.7s forwards; pointer-events: none; z-index: 10; }
-            @keyframes floatUp { from { transform: translateY(0); opacity: 1; } to { transform: translateY(-150px); opacity: 0; } }
-            .footer { position: absolute; bottom: 30px; color: #444; font-size: 12px; }
+            :root { --main: #00f2ff; --bg: #030303; --accent: #0066ff; }
+            * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+            body { background: var(--bg); color: #fff; font-family: 'Inter', system-ui, sans-serif; margin: 0; height: 100vh; display: flex; flex-direction: column; align-items: center; justify-content: space-between; overflow: hidden; }
+            
+            .header { padding: 40px 20px; text-align: center; width: 100%; background: linear-gradient(to bottom, rgba(0,242,255,0.1) 0%, transparent 100%); }
+            .balance-container { position: relative; display: inline-block; }
+            .balance-amount { font-size: 68px; font-weight: 900; color: var(--main); text-shadow: 0 0 40px rgba(0,242,255,0.5); font-variant-numeric: tabular-nums; }
+            .ton-symbol { font-size: 24px; color: #fff; opacity: 0.5; margin-left: 10px; }
+
+            .tap-section { position: relative; flex-grow: 1; display: flex; align-items: center; justify-content: center; width: 100%; }
+            .main-button { 
+                width: 300px; height: 300px; border-radius: 50%; border: none;
+                background: radial-gradient(circle, #0088cc 0%, #001a33 100%);
+                box-shadow: 0 0 50px rgba(0,102,255,0.3), inset 0 0 20px rgba(255,255,255,0.1);
+                position: relative; z-index: 10; cursor: pointer; transition: transform 0.05s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+                display: flex; align-items: center; justify-content: center;
+            }
+            .main-button::after { content: ''; position: absolute; width: 110%; height: 110%; border: 2px solid var(--main); border-radius: 50%; opacity: 0.3; animation: orbit 10s linear infinite; }
+            .main-button:active { transform: scale(0.94); }
+            .logo-img { width: 140px; filter: drop-shadow(0 0 20px var(--main)); }
+
+            .particle { position: absolute; color: var(--main); font-weight: 900; font-size: 28px; pointer-events: none; animation: floatUp 0.8s ease-out forwards; z-index: 100; text-shadow: 0 0 10px rgba(0,0,0,0.5); }
+            @keyframes floatUp { 0% { transform: translateY(0) scale(1) rotate(0); opacity: 1; } 100% { transform: translateY(-200px) scale(1.5) rotate(20deg); opacity: 0; } }
+            @keyframes orbit { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
+
+            .footer { padding: 30px; font-size: 10px; color: rgba(255,255,255,0.2); letter-spacing: 4px; text-transform: uppercase; }
         </style>
     </head>
     <body>
-        <div class="stats">
-            <div class="balance-label">TOTAL TON</div>
-            <div class="balance-value" id="score">0.00</div>
+        <div class="header">
+            <div style="font-size: 12px; opacity: 0.4; letter-spacing: 5px; margin-bottom: 5px;">CURRENT ASSETS</div>
+            <div class="balance-container">
+                <span class="balance-amount" id="score">0.00</span><span class="ton-symbol">TON</span>
+            </div>
         </div>
 
-        <div class="btn-container">
-            <div class="pulse"></div>
-            <button class="main-btn" id="tapBtn"></button>
+        <div class="tap-section">
+            <button class="main-button" id="tapBtn">
+                <img src="https://ton.org/download/ton_symbol.png" class="logo-img">
+            </button>
         </div>
 
-        <div class="footer">POWERED BY TON BLOCKCHAIN</div>
+        <div class="footer">Secured by TON Blockchain</div>
 
-        <audio id="bgMusic" src="https://files.catbox.moe/78surr.mp3" loop></audio>
+        <audio id="bgMusic" src="https://files.catbox.moe/78surr.mp3" loop preload="auto"></audio>
 
         <script>
-            let tg = window.Telegram.WebApp;
-            let score = 0;
-            let scoreEl = document.getElementById('score');
-            let btn = document.getElementById('tapBtn');
-            let music = document.getElementById('bgMusic');
+            const tg = window.Telegram.WebApp;
+            const scoreEl = document.getElementById('score');
+            const btn = document.getElementById('tapBtn');
+            const music = document.getElementById('bgMusic');
+            let balance = 0;
 
             tg.expand();
             tg.enableClosingConfirmation();
+            tg.headerColor = '#030303';
 
             btn.addEventListener('pointerdown', (e) => {
-                // Включение музыки при первом клике
-                if (music.paused) music.play();
-
-                score += 0.01;
-                scoreEl.innerText = score.toFixed(2);
+                if (music.paused) music.play().catch(() => {});
                 
-                // Вибрация
-                tg.HapticFeedback.impactOccurred('heavy');
+                balance += 0.01;
+                scoreEl.innerText = balance.toFixed(2);
+                
+                tg.HapticFeedback.impactOccurred('medium');
 
-                // Создание вылетающего текста
-                let text = document.createElement('div');
-                text.className = 'floating-text';
-                text.innerText = '+0.01';
-                text.style.left = e.pageX + 'px';
-                text.style.top = e.pageY - 50 + 'px';
-                document.body.appendChild(text);
-
-                setTimeout(() => text.remove(), 700);
+                // Продвинутые частицы
+                const p = document.createElement('div');
+                p.className = 'particle';
+                p.innerText = '+0.01';
+                p.style.left = e.pageX + 'px';
+                p.style.top = e.pageY + 'px';
+                document.body.appendChild(p);
+                
+                setTimeout(() => p.remove(), 800);
             });
         </script>
     </body>
@@ -275,60 +233,94 @@ app.get('/', (req, res) => {
 });
 
 // ==========================================
-// 👑 ВЕБ-АДМИНКА (УПРАВЛЕНИЕ ЧЕРЕЗ БРАУЗЕР)
+// 👑 MEGA ADMIN PANEL (FULL CRM INTERFACE)
 // ==========================================
-
 app.get('/admin', async (req, res) => {
     const users = await User.find().sort({ balance: -1 });
-    const promos = await Promo.find();
-
-    let userRows = users.map(u => `
-        <div class="user-card">
-            <div class="user-info">
-                <b>${u.firstName}</b> (@${u.username})<br>
-                <small>ID: ${u.tgId}</small>
-            </div>
-            <div class="user-balance">${u.balance.toFixed(2)} TON</div>
-            <form action="/admin/update-balance" method="POST">
-                <input type="hidden" name="id" value="${u.tgId}">
-                <input type="number" step="0.01" name="amount" placeholder="Сумма (+/-)">
-                <button type="submit">OK</button>
-            </form>
-        </div>
-    `).join('');
+    const stats = {
+        totalUsers: users.length,
+        totalBalance: users.reduce((a, b) => a + b.balance, 0).toFixed(2),
+        totalTaps: users.reduce((a, b) => a + b.totalTaps, 0)
+    };
 
     res.send(`
     <!DOCTYPE html><html><head><meta charset="UTF-8">
+    <title>TON ADMIN PRO</title>
     <style>
-        body { background: #0a0a0a; color: #ccc; font-family: sans-serif; padding: 20px; }
-        .user-card { background: #1a1a1a; padding: 15px; border-radius: 10px; margin-bottom: 10px; display: flex; align-items: center; justify-content: space-between; border-left: 4px solid #00d4ff; }
-        .user-info { flex: 1; }
-        .user-balance { font-size: 20px; font-weight: bold; color: #00ffcc; margin: 0 20px; }
-        input { background: #333; border: 1px solid #444; color: #fff; padding: 5px; border-radius: 5px; width: 80px; }
-        button { background: #00d4ff; border: none; color: #000; padding: 6px 12px; border-radius: 5px; font-weight: bold; cursor: pointer; }
-        h1 { color: #00d4ff; }
-    </style></head><body>
-        <h1>👑 TON CASINO ADMIN</h1>
-        <div class="admin-container">
-            <h3>Список игроков (${users.length})</h3>
-            ${userRows}
+        body { background: #0a0e14; color: #d1d5db; font-family: 'Segoe UI', sans-serif; margin: 0; padding: 40px; }
+        .stats-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 20px; margin-bottom: 40px; }
+        .stat-card { background: #161b22; padding: 25px; border-radius: 12px; border: 1px solid #30363d; }
+        .stat-card h2 { margin: 0; color: #58a6ff; font-size: 32px; }
+        
+        .user-table { width: 100%; border-collapse: collapse; background: #161b22; border-radius: 12px; overflow: hidden; border: 1px solid #30363d; }
+        th { text-align: left; background: #21262d; padding: 15px; color: #8b949e; }
+        td { padding: 15px; border-top: 1px solid #30363d; }
+        
+        .balance-badge { background: rgba(35, 134, 54, 0.2); color: #3fb950; padding: 4px 10px; border-radius: 20px; font-weight: bold; }
+        input[type="number"] { background: #0d1117; border: 1px solid #30363d; color: #fff; padding: 8px; border-radius: 6px; width: 80px; }
+        button { background: #238636; color: #fff; border: none; padding: 8px 15px; border-radius: 6px; cursor: pointer; transition: 0.2s; }
+        button:hover { background: #2ea043; }
+        .id-link { color: #58a6ff; text-decoration: none; font-family: monospace; }
+    </style></head>
+    <body>
+        <h1>👑 Управление проектом TON CASINO</h1>
+        
+        <div class="stats-grid">
+            <div class="stat-card"><span>Всего игроков</span><h2>${stats.totalUsers}</h2></div>
+            <div class="stat-card"><span>Общий баланс</span><h2>${stats.totalBalance} TON</h2></div>
+            <div class="stat-card"><span>Всего кликов</span><h2>${stats.totalTaps}</h2></div>
         </div>
+
+        <table class="user-table">
+            <thead>
+                <tr>
+                    <th>Игрок</th>
+                    <th>ID</th>
+                    <th>Баланс</th>
+                    <th>Клики</th>
+                    <th>Управление</th>
+                </tr>
+            </thead>
+            <tbody>
+                ${users.map(u => `
+                    <tr>
+                        <td><b>${u.name || 'Аноним'}</b><br><small>@${u.username || '-'}</small></td>
+                        <td><span class="id-link">${u.tgId}</span></td>
+                        <td><span class="balance-badge">${u.balance.toFixed(2)} TON</span></td>
+                        <td>${u.totalTaps}</td>
+                        <td>
+                            <form action="/admin/give" method="POST" style="display:flex; gap:10px">
+                                <input type="hidden" name="id" value="${u.tgId}">
+                                <input type="number" step="0.1" name="amount" placeholder="+/-">
+                                <button type="submit">Применить</button>
+                            </form>
+                        </td>
+                    </tr>
+                `).join('')}
+            </tbody>
+        </table>
     </body></html>
     `);
 });
 
-app.post('/admin/update-balance', async (req, res) => {
+app.post('/admin/give', async (req, res) => {
     const { id, amount } = req.body;
-    await User.updateOne({ tgId: Number(id) }, { $inc: { balance: Number(amount) } });
+    if (id && amount) {
+        await User.updateOne({ tgId: id }, { $inc: { balance: Number(amount) } });
+    }
     res.redirect('/admin');
 });
 
 // ==========================================
-// 🚀 ЗАПУСК СЕРВЕРА
+// 🚀 ЗАПУСК СИСТЕМЫ
 // ==========================================
-app.listen(PORT, () => {
-    console.log('====================================');
-    console.log(`🚀 СЕРВЕР ЗАПУЩЕН НА ПОРТУ ${PORT}`);
-    console.log(`📡 WEB APP: ${WEB_APP_URL}`);
-    console.log('====================================');
+app.listen(PORT, '0.0.0.0', () => {
+    console.log(`
+    ████████████████████████████████
+    🚀 MEGA SCRIPT 2026 STARTED
+    📡 PORT: ${PORT}
+    🤖 BOT: ACTIVE
+    👑 ADMIN: ${WEB_URL}/admin
+    ████████████████████████████████
+    `);
 });
