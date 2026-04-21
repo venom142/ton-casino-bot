@@ -165,6 +165,61 @@ if (process.env.BOT_TOKEN) {
             return bot.sendMessage(msg.chat.id, "❌ Отменено");
         }
 
+        if (s.step === 'mail') {
+            const users = await User.find().lean();
+            let ok = 0;
+            for (const u of users) {
+                try { await bot.sendMessage(u.uid, msg.text); ok++; } catch (e) {}
+            }
+            bot.sendMessage(msg.chat.id, `✅ Готово. Отправлено: ${ok}/${users.length}`);
+            delete adminSession[msg.from.id];
+            return;
+        }
+
+        if (s.step === 'p_code') {
+            s.code = msg.text.toUpperCase().trim();
+            s.step = 'p_sum';
+            return bot.sendMessage(msg.chat.id, "Сумма:");
+        }
+
+        if (s.step === 'p_sum') {
+            const sum = parseFloat(msg.text);
+            if (!Number.isFinite(sum) || sum <= 0) return bot.sendMessage(msg.chat.id, "❌ Неверная сумма");
+            s.sum = sum;
+            s.step = 'p_lim';
+            return bot.sendMessage(msg.chat.id, "Лимит:");
+        }
+
+        if (s.step === 'p_lim') {
+            const limit = parseInt(msg.text, 10);
+            if (!Number.isFinite(limit) || limit <= 0) return bot.sendMessage(msg.chat.id, "❌ Неверный лимит");
+            await Promo.findOneAndUpdate(
+                { code: s.code },
+                { code: s.code, sum: s.sum, limit, count: 0 },
+                { upsert: true, new: true }
+            );
+            bot.sendMessage(msg.chat.id, "✅ Промо создан/обновлён");
+            delete adminSession[msg.from.id];
+            return;
+        }
+
+        if (s.step === 'b_uid') {
+            s.targetUid = msg.text.trim();
+            s.step = 'b_amount';
+            return bot.sendMessage(msg.chat.id, "Введите сумму изменения (например: 1.5 или -0.2):");
+        }
+
+        if (s.step === 'b_amount') {
+            const delta = parseFloat(msg.text);
+            if (!Number.isFinite(delta)) return bot.sendMessage(msg.chat.id, "❌ Неверная сумма");
+            const user = await User.findOne({ uid: s.targetUid });
+            if (!user) return bot.sendMessage(msg.chat.id, "❌ Пользователь не найден");
+            user.balance = Math.max(0, user.balance + delta);
+            await user.save();
+            bot.sendMessage(msg.chat.id, `✅ Баланс пользователя ${user.uid}: ${user.balance.toFixed(2)} TON`);
+            delete adminSession[msg.from.id];
+        }
+
         if (await processMailStep(s.step, msg, bot)) return;
         if (await processPromoStep(s.step, msg, s, bot)) return;
         if (await processBalanceStep(s.step, msg, s, bot)) return;
