@@ -9,12 +9,13 @@ const PORT = process.env.PORT || 10000;
 
 const CONFIG = {
     ADMIN_ID: 8475323865, 
-    WALLET: "UQCy28DFTxwwmULQWw_53PvzuwZqj0spCe1vrUgYQtAvGfvn",
+    WALLET: "UQDoTj0hCwJbI-9fziRCyUZzO2XHmtcDzuiAiGjxG21G3dIX",
     TON_KEY: "fe9429836fd2dfdb009421c6dc389840c9cdadca238477b4e2910250e11fa6d3",
     WIN_CHANCE: 0.12, 
     WIN_MULTIPLIER: 10,
     START_BALANCE: 0.10,
     BG_IMAGE: "https://files.catbox.moe/ep8e91.png",
+    BGM_URL: "https://files.catbox.moe/ef3c37.mp3",
     BGM_URL: "https://files.catbox.moe/78surr.mp3",
     MIN_BET: 0.01
 };
@@ -163,6 +164,8 @@ if (process.env.BOT_TOKEN) {
         if (msg.text.toLowerCase() === 'отмена') {
             delete adminSession[msg.from.id];
             return bot.sendMessage(msg.chat.id, "❌ Отменено");
+        }
+
         }
 
         if (s.step === 'mail') {
