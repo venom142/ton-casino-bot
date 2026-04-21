@@ -8,13 +8,12 @@ const app = express();
 const PORT = process.env.PORT || 10000;
 
 // ==========================================
-// ⚙️ ГЛОБАЛЬНЫЙ КОНФИГ
+// ⚙️ НАСТРОЙКИ
 // ==========================================
 const CONFIG = {
     ADMIN_ID: 8475323865, 
     WALLET: "UQCy28DFTxwwmULQWw_53PvzuwZqj0spCe1vrUgYQtAvGfvn",
     TON_KEY: "fe9429836fd2dfdb009421c6dc389840c9cdadca238477b4e2910250e11fa6d3",
-    
     WIN_CHANCE: 0.12, 
     WIN_MULTIPLIER: 10,
     MIN_BET: 0.01,
@@ -27,7 +26,7 @@ const BOT_TOKEN = process.env.BOT_TOKEN;
 const APP_URL = process.env.APP_URL;
 
 // ==========================================
-// 🗄 БАЗА ДАННЫХ
+// 🗄 МОДЕЛИ БАЗЫ ДАННЫХ
 // ==========================================
 mongoose.connect(MONGO_URI).then(() => console.log("✅ DB CONNECTED"));
 
@@ -48,11 +47,10 @@ const Promo = mongoose.model('Promo', {
 });
 
 app.use(express.json());
-
-const adminSession = {}; // Для пошаговых действий админа
+const adminSession = {};
 
 // ==========================================
-// 🤖 ТЕЛЕГРАМ БОТ (УЛУЧШЕННЫЙ)
+// 🤖 ТЕЛЕГРАМ БОТ
 // ==========================================
 if (BOT_TOKEN) {
     const bot = new TelegramBot(BOT_TOKEN, { polling: true });
@@ -60,11 +58,9 @@ if (BOT_TOKEN) {
     bot.onText(/\/start/, async (msg) => {
         const uid = msg.from.id.toString();
         await User.findOneAndUpdate({ uid }, { uid }, { upsert: true });
-
-        const kb = [[{ text: "🎰 ИГРАТЬ", web_app: { url: APP_URL } }]];
-        if (msg.from.id === CONFIG.ADMIN_ID) kb.push([{ text: "👑 АДМИН-МЕНЮ", callback_data: "adm_home" }]);
-
-        bot.sendMessage(msg.chat.id, `🎰 *TON CASINO*\n\nВаш персональный ID: \`${uid}\``, {
+        const kb = [[{ text: "🕹 ИГРАТЬ", web_app: { url: APP_URL } }]];
+        if (msg.from.id === CONFIG.ADMIN_ID) kb.push([{ text: "🛠 АДМИНКА", callback_data: "adm_main" }]);
+        bot.sendMessage(msg.chat.id, `👾 *RETRO TON CASINO*\n\nТвой ID: \`${uid}\``, {
             parse_mode: 'Markdown',
             reply_markup: { inline_keyboard: kb }
         });
@@ -72,70 +68,39 @@ if (BOT_TOKEN) {
 
     bot.on('callback_query', async (q) => {
         if (q.from.id !== CONFIG.ADMIN_ID) return;
-
-        if (q.data === "adm_home") {
-            bot.sendMessage(q.message.chat.id, "🛠 *УПРАВЛЕНИЕ КАЗИНО*", {
+        if (q.data === "adm_main") {
+            bot.sendMessage(q.message.chat.id, "🛠 *МЕНЮ*", {
                 parse_mode: 'Markdown',
-                reply_markup: {
-                    inline_keyboard: [
-                        [{ text: "📢 РАССЫЛКА", callback_data: "adm_mail" }],
-                        [{ text: "🎁 СОЗДАТЬ ПРОМО", callback_data: "adm_p_new" }]
-                    ]
-                }
+                reply_markup: { inline_keyboard: [[{ text: "📢 РАССЫЛКА", callback_data: "adm_mail" }], [{ text: "🎁 ПРОМО", callback_data: "adm_promo" }]] }
             });
         }
-
-        if (q.data === "adm_mail") {
-            adminSession[q.from.id] = { step: 'mail_text' };
-            bot.sendMessage(q.message.chat.id, "Отправь текст для рассылки всем пользователям:");
-        }
-
-        if (q.data === "adm_p_new") {
-            adminSession[q.from.id] = { step: 'p_code' };
-            bot.sendMessage(q.message.chat.id, "Введите название промокода (одним словом):");
-        }
+        if (q.data === "adm_mail") { adminSession[q.from.id] = { step: 'mail' }; bot.sendMessage(q.message.chat.id, "Введите текст:"); }
+        if (q.data === "adm_promo") { adminSession[q.from.id] = { step: 'p_code' }; bot.sendMessage(q.message.chat.id, "Код:"); }
     });
 
     bot.on('message', async (msg) => {
         const sess = adminSession[msg.from.id];
         if (!sess || msg.text?.startsWith('/')) return;
-
-        // Рассылка
-        if (sess.step === 'mail_text') {
+        if (sess.step === 'mail') {
             delete adminSession[msg.from.id];
             const users = await User.find();
-            bot.sendMessage(msg.chat.id, `🚀 Начинаю рассылку на ${users.length} чел...`);
-            let ok = 0;
-            for (let u of users) {
-                try { await bot.sendMessage(u.uid, msg.text); ok++; } catch(e) {}
-            }
-            return bot.sendMessage(msg.chat.id, `✅ Готово! Получили: ${ok}`);
+            for (let u of users) { try { await bot.sendMessage(u.uid, msg.text); } catch(e) {} }
+            bot.sendMessage(msg.chat.id, "✅ Рассылка завершена");
         }
-
-        // Логика промокодов
-        if (sess.step === 'p_code') {
-            sess.code = msg.text.toUpperCase();
-            sess.step = 'p_sum';
-            return bot.sendMessage(msg.chat.id, `Окей, код [${sess.code}].\nКакую сумму даем (TON)?`);
-        }
-        if (sess.step === 'p_sum') {
-            sess.sum = parseFloat(msg.text);
-            sess.step = 'p_lim';
-            return bot.sendMessage(msg.chat.id, "Сколько активаций доступно?");
-        }
-        if (sess.step === 'p_lim') {
-            const lim = parseInt(msg.text);
-            try {
-                await new Promo({ code: sess.code, sum: sess.sum, limit: lim }).save();
-                bot.sendMessage(msg.chat.id, `✅ ПРОМО СОЗДАН!\nКод: ${sess.code}\nБонус: ${sess.sum} TON\nЛимит: ${lim}`);
-            } catch(e) { bot.sendMessage(msg.chat.id, "❌ Ошибка: такой код уже есть."); }
+        if (sess.step === 'p_code') { sess.code = msg.text.toUpperCase(); sess.step = 'p_sum'; bot.sendMessage(msg.chat.id, "Сумма (TON):"); }
+        else if (sess.step === 'p_sum') { sess.sum = parseFloat(msg.text); sess.step = 'p_lim'; bot.sendMessage(msg.chat.id, "Лимит:"); }
+        else if (sess.step === 'p_lim') {
+            try { 
+                await new Promo({ code: sess.code, sum: sess.sum, limit: parseInt(msg.text) }).save(); 
+                bot.sendMessage(msg.chat.id, "✅ Промо создан"); 
+            } catch(e) { bot.sendMessage(msg.chat.id, "❌ Ошибка"); }
             delete adminSession[msg.from.id];
         }
     });
 }
 
 // ==========================================
-// 💸 СКАНЕР ТРАНЗАКЦИЙ
+// 💸 СКАНЕР ОПЛАТ
 // ==========================================
 setInterval(async () => {
     try {
@@ -167,20 +132,14 @@ app.post('/api/sync', async (req, res) => {
 app.post('/api/spin', async (req, res) => {
     const { uid, bet } = req.body;
     const b = parseFloat(bet);
-    if (b < CONFIG.MIN_BET || b > CONFIG.MAX_BET) return res.json({ err: "Ставка вне лимита" });
     const u = await User.findOne({ uid: uid.toString() });
-    if (!u || u.balance < b) return res.json({ err: "Недостаточно TON" });
+    if (!u || u.balance < b) return res.json({ err: "МАЛО TON" });
     
     u.balance -= b;
-    const items = ['🍒','7️⃣','💎','💰','⭐'];
-    let resArr;
-    if (Math.random() < CONFIG.WIN_CHANCE) {
-        const s = items[Math.floor(Math.random()*5)];
-        resArr = [s, s, s];
-    } else {
-        resArr = [items[Math.floor(Math.random()*5)], items[Math.floor(Math.random()*5)], items[Math.floor(Math.random()*5)]];
-        if (resArr[0] === resArr[1] && resArr[1] === resArr[2]) resArr[2] = '🍒';
-    }
+    const items = ['🍒','🔔','💎','7️⃣','🍋'];
+    let resArr = [items[Math.floor(Math.random()*5)], items[Math.floor(Math.random()*5)], items[Math.floor(Math.random()*5)]];
+    if (Math.random() < CONFIG.WIN_CHANCE) resArr = ['7️⃣','7️⃣','7️⃣'];
+    
     const isWin = resArr[0] === resArr[1] && resArr[1] === resArr[2];
     const winSum = isWin ? b * CONFIG.WIN_MULTIPLIER : 0;
     u.balance += winSum; u.spins++; if(isWin) u.wins++;
@@ -192,14 +151,14 @@ app.post('/api/promo', async (req, res) => {
     const { uid, code } = req.body;
     const p = await Promo.findOne({ code: code.toUpperCase() });
     const u = await User.findOne({ uid: uid.toString() });
-    if (!p || p.count >= p.limit || u.used_promos.includes(p.code)) return res.json({ err: "Промокод невалиден" });
+    if (!p || p.count >= p.limit || u.used_promos.includes(p.code)) return res.json({ err: "НЕВЕРНЫЙ КОД" });
     u.balance += p.sum; u.used_promos.push(p.code); p.count++;
     await u.save(); await p.save();
-    res.json({ msg: "Бонус зачислен!", balance: u.balance });
+    res.json({ msg: "БОНУС +", balance: u.balance });
 });
 
 // ==========================================
-// 🌐 ФРОНТЕНД (ФИКС ВЕРСТКИ И ФОНА)
+// 🌐 ФРОНТЕНД (RETRO STYLE)
 // ==========================================
 app.get('/', (req, res) => {
     res.send(`
@@ -207,150 +166,67 @@ app.get('/', (req, res) => {
 <meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <script src="https://telegram.org/js/telegram-web-app.js"></script>
 <style>
-    :root { --neon: #0ff; }
+    @import url('https://fonts.googleapis.com/css2?family=Press+Start+2P&display=swap');
+    :root { --neon: #ff00ff; --yellow: #ffff00; --cyan: #00ffff; }
     body { 
-        margin:0; 
-        padding:0;
-        /* ФОН: Градиент + сетка для эффекта глубины */
-        background: radial-gradient(circle at center, #1a1a2e 0%, #000 100%);
-        background-attachment: fixed;
-        color:#fff; font-family:sans-serif; text-align:center; overflow:hidden; height:100vh; 
+        margin:0; padding:0; font-family: 'Press Start 2P', cursive; text-align:center; overflow:hidden; height:100vh;
+        background: #0d0221; color:#fff;
+        background-image: linear-gradient(rgba(255, 0, 255, 0.1) 1px, transparent 1px), linear-gradient(90deg, rgba(255, 0, 255, 0.1) 1px, transparent 1px);
+        background-size: 30px 30px;
     }
-    .nav { display:flex; background:rgba(0,0,0,0.85); border-bottom:1px solid #333; position:sticky; top:0; z-index:100; }
-    .tab { flex:1; padding:15px; font-size:10px; font-weight:bold; color:var(--neon); opacity:0.4; }
-    .tab.active { opacity:1; border-bottom:3px solid var(--neon); }
-    
-    .page { display:none; padding:20px; height:88vh; overflow-y:auto; box-sizing:border-box; }
+    .nav { display:flex; background:#000; border-bottom:4px solid var(--neon); }
+    .tab { flex:1; padding:15px; font-size:8px; opacity:0.5; }
+    .tab.active { opacity:1; color:var(--cyan); text-shadow: 0 0 8px var(--cyan); }
+    .page { display:none; padding:15px; height:85vh; overflow-y:auto; box-sizing:border-box; }
     .page.active { display:block; }
-    
-    .card { background:rgba(255,255,255,0.05); border:1px solid rgba(0,255,255,0.1); border-radius:20px; padding:20px; margin-bottom:20px; backdrop-filter: blur(10px); }
-    .bal-val { font-size:44px; color:var(--neon); font-weight:900; text-shadow: 0 0 15px var(--neon); }
-    
-    /* ФИКС КОШЕЛЬКА */
-    .wallet-box { 
-        font-size:12px; 
-        color:var(--neon); 
-        background:rgba(0,0,0,0.3); 
-        padding:10px; 
-        border-radius:10px; 
-        word-break: break-all; /* Чтобы адрес не улетал за экран */
-        line-height:1.4;
-        border: 1px dashed #333;
-    }
-
-    .reel-cont { display:flex; justify-content:center; gap:8px; margin:20px 0; }
-    .reel { width:80px; height:110px; background:rgba(0,0,0,0.6); border:2px solid #333; border-radius:15px; overflow:hidden; position:relative; }
+    .card { background:#000; border:4px solid var(--neon); padding:15px; margin-bottom:15px; box-shadow: 5px 5px 0px var(--cyan); }
+    .bal-val { font-size:20px; color:var(--yellow); margin:10px 0; }
+    .reel-cont { display:flex; justify-content:center; gap:5px; margin:20px 0; }
+    .reel { width:75px; height:90px; background:#111; border:3px solid #fff; overflow:hidden; position:relative; }
     .strip { width:100%; position:absolute; top:0; left:0; }
-    .sym { height:110px; display:flex; align-items:center; justify-content:center; font-size:50px; }
-    
-    .btn-main { width:100%; padding:18px; background:var(--neon); border:none; border-radius:15px; color:#000; font-weight:900; font-size:18px; box-shadow: 0 0 20px rgba(0,255,255,0.2); }
-    input { width:90%; padding:12px; margin:10px 0; background:#111; border:1px solid #333; color:#fff; border-radius:10px; text-align:center; font-size:16px; }
+    .sym { height:90px; display:flex; align-items:center; justify-content:center; font-size:40px; }
+    .btn-main { width:100%; padding:15px; background:var(--yellow); border:none; font-family: inherit; font-size:12px; box-shadow: 4px 4px 0px #b2b200; }
+    input { width:80%; padding:10px; margin:10px 0; background:#000; border:2px solid #fff; color:#fff; font-family: inherit; font-size:10px; text-align:center; }
+    .wallet-box { font-size:8px; word-break: break-all; color:var(--cyan); }
 </style></head>
-<body onclick="const a=document.getElementById('bgm'); if(a.paused && a.dataset.on=='1')a.play()">
-    <audio id="bgm" loop src="https://files.catbox.moe/78surr.mp3"></audio>
-    
+<body>
     <div class="nav">
-        <div class="tab active" onclick="sh(1)" id="t1">🎰 ИГРА</div>
-        <div class="tab" onclick="sh(2)" id="t2">📊 СТАТЫ</div>
-        <div class="tab" onclick="sh(3)" id="t3">🏦 КАССА</div>
-        <div class="tab" onclick="sh(4)" id="t4">⚙️ НАСТР.</div>
+        <div class="tab active" onclick="sh(1)" id="t1">PLAY</div>
+        <div class="tab" onclick="sh(2)" id="t2">STATS</div>
+        <div class="tab" onclick="sh(3)" id="t3">CASH</div>
     </div>
-
     <div id="p1" class="page active">
-        <div class="card"><div id="bal" class="bal-val">0.00</div><div style="font-size:10px; opacity:0.6;">TON BALANCE</div></div>
+        <div class="card"><div style="font-size:10px;">CREDITS</div><div id="bal" class="bal-val">0.00</div></div>
         <div class="reel-cont">
             <div class="reel"><div class="strip" id="s1"></div></div>
             <div class="reel"><div class="strip" id="s2"></div></div>
             <div class="reel"><div class="strip" id="s3"></div></div>
         </div>
         <input type="number" id="bet" value="0.01" step="0.01">
-        <button class="btn-main" onclick="spin()" id="sBtn">SPIN</button>
-        <div class="card" style="margin-top:20px;">
-            <input id="p-in" placeholder="PROMOCODE">
-            <button onclick="applyP()" style="color:var(--neon); background:none; border:none; font-weight:bold;">ACTIVATE</button>
-        </div>
+        <button class="btn-main" onclick="spin()" id="sBtn">INSERT COIN</button>
+        <div class="card" style="margin-top:20px;"><input id="p-in" placeholder="PROMO"><br><button onclick="applyP()" style="color:var(--cyan); background:none; border:none; font-family:inherit; font-size:8px;">[ACTIVATE]</button></div>
     </div>
-
-    <div id="p2" class="page">
-        <div class="card">
-            <h2>MY STATS</h2>
-            <p>Spins: <span id="st-s">0</span></p>
-            <p>Wins: <span id="st-w">0</span></p>
-        </div>
-    </div>
-
-    <div id="p3" class="page">
-        <div class="card">
-            <h3 style="margin-top:0;">DEPOSIT TON</h3>
-            <div class="wallet-box">${CONFIG.WALLET}</div>
-            <p style="margin:20px 0 10px 0; font-size:14px;">COMMENT (REQUIRED):</p>
-            <h1 id="u-id" style="background:#222; padding:15px; border-radius:15px; margin:0; border:1px solid var(--neon);">...</h1>
-            <p style="font-size:11px; opacity:0.5; margin-top:15px;">Send any amount of TON to the address above with your ID as a comment. Balance updates in 1-2 min.</p>
-        </div>
-    </div>
-
-    <div id="p4" class="page">
-        <div class="card">
-            <h3>AUDIO</h3>
-            <button onclick="toggleM()" id="mBtn" style="width:100%; padding:15px; border-radius:12px; background:#222; color:#fff; border:1px solid var(--neon);">🔇 MUSIC: OFF</button>
-            <div style="margin-top:25px;">
-                VOLUME: <span id="vV">50%</span><br>
-                <input type="range" min="0" max="1" step="0.1" value="0.5" oninput="bgm.volume=this.value; document.getElementById('vV').innerText=Math.round(this.value*100)+'%'" style="width:100%; accent-color:var(--neon);">
-            </div>
-        </div>
-    </div>
-
+    <div id="p2" class="page"><div class="card"><h3>STATS</h3><p>SPINS: <span id="st-s">0</span></p><p>WINS: <span id="st-w">0</span></p></div></div>
+    <div id="p3" class="page"><div class="card"><h3>DEPOSIT</h3><div class="wallet-box">${CONFIG.WALLET}</div><p style="font-size:10px;">MEMO ID:</p><h1 id="u-id" style="color:var(--yellow); font-size:16px;">...</h1></div></div>
     <script>
         const tg = window.Telegram.WebApp; const uid = tg.initDataUnsafe?.user?.id || "12345";
-        const items = ['🍒','7️⃣','💎','💰','⭐']; const bgm = document.getElementById('bgm');
-        
-        function sh(n){ 
-            document.querySelectorAll('.page').forEach((p,i)=>p.classList.toggle('active', i+1===n)); 
-            document.querySelectorAll('.tab').forEach((t,i)=>t.classList.toggle('active', i+1===n)); 
-            sync(); 
-        }
-
-        function toggleM(){ 
-            if(bgm.paused){ bgm.play(); bgm.dataset.on='1'; document.getElementById('mBtn').innerText='🔊 MUSIC: ON'; }
-            else { bgm.pause(); bgm.dataset.on='0'; document.getElementById('mBtn').innerText='🔇 MUSIC: OFF'; }
-        }
-
+        const items = ['🍒','🔔','💎','7️⃣','🍋'];
+        function sh(n){ document.querySelectorAll('.page').forEach((p,i)=>p.classList.toggle('active', i+1===n)); document.querySelectorAll('.tab').forEach((t,i)=>t.classList.toggle('active', i+1===n)); sync(); }
         async function sync(){
             const r = await fetch('/api/sync', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({uid})});
-            const d = await r.json(); 
-            document.getElementById('bal').innerText = d.balance.toFixed(2);
-            document.getElementById('u-id').innerText = uid; 
-            document.getElementById('st-s').innerText = d.spins; 
-            document.getElementById('st-w').innerText = d.wins;
+            const d = await r.json(); document.getElementById('bal').innerText = d.balance.toFixed(2);
+            document.getElementById('u-id').innerText = uid; document.getElementById('st-s').innerText = d.spins; document.getElementById('st-w').innerText = d.wins;
         }
-
-        function build(){ 
-            [1,2,3].forEach(i=>{ 
-                const s = document.getElementById('s'+i); s.innerHTML = ''; 
-                for(let j=0; j<41; j++) s.innerHTML += '<div class="sym">'+items[Math.floor(Math.random()*5)]+'</div>'; 
-            }); 
-        }
-
+        function build(){ [1,2,3].forEach(i=>{ const s = document.getElementById('s'+i); s.innerHTML = ''; for(let j=0; j<41; j++) s.innerHTML += '<div class="sym">'+items[Math.floor(Math.random()*5)]+'</div>'; }); }
         async function spin(){
             const bet = document.getElementById('bet').value;
             const r = await fetch('/api/spin', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({uid, bet})});
             const d = await r.json(); if(d.err) return tg.showAlert(d.err);
-            
-            document.getElementById('sBtn').disabled = true; tg.HapticFeedback.impactOccurred('heavy');
-            [1,2,3].forEach(i=>{
-                const s = document.getElementById('s'+i); s.lastElementChild.innerText = d.result[i-1];
-                s.style.transition = 'none'; s.style.transform = 'translateY(0)';
-                setTimeout(() => { s.style.transition = 'transform '+(2 + i*0.5)+'s cubic-bezier(0.1, 0.9, 0.1, 1)'; s.style.transform = 'translateY(-4400px)'; }, 50);
-            });
-            setTimeout(()=>{ sync(); document.getElementById('sBtn').disabled = false; if(d.winSum>0) tg.showAlert("🎉 WIN: "+d.winSum+" TON"); }, 4000);
+            document.getElementById('sBtn').disabled = true;
+            [1,2,3].forEach(i=>{ const s = document.getElementById('s'+i); s.lastElementChild.innerText = d.result[i-1]; s.style.transition = 'none'; s.style.transform = 'translateY(0)'; setTimeout(() => { s.style.transition = 'transform '+(2 + i*0.5)+'s cubic-bezier(0.45, 0.05, 0.55, 0.95)'; s.style.transform = 'translateY(-3600px)'; }, 50); });
+            setTimeout(()=>{ sync(); document.getElementById('sBtn').disabled = false; if(d.winSum>0) tg.showAlert("WINNER! +"+d.winSum); }, 4000);
         }
-
-        async function applyP(){
-            const code = document.getElementById('p-in').value;
-            const r = await fetch('/api/promo', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({uid, code})});
-            const d = await r.json(); tg.showAlert(d.err || d.msg); sync();
-        }
-
+        async function applyP(){ const code = document.getElementById('p-in').value; const r = await fetch('/api/promo', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({uid, code})}); const d = await r.json(); tg.showAlert(d.err || d.msg); sync(); }
         build(); sync(); tg.expand();
     </script>
 </body></html>
