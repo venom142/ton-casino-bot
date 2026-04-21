@@ -18,12 +18,6 @@ const CONFIG = {
     BGM_URL: "https://files.catbox.moe/78surr.mp3",
     MIN_BET: 0.01
 };
-const ACTIVE_BGM_URL = process.env.BGM_URL || "https://files.catbox.moe/ef3c37.mp3";
-const GAME_SETTINGS = {
-    winChance: CONFIG.WIN_CHANCE,
-    winMultiplier: CONFIG.WIN_MULTIPLIER,
-    minBet: CONFIG.MIN_BET
-};
 
 mongoose.connect(process.env.MONGO_URI).then(() => console.log("✅ База подключена"));
 
@@ -54,20 +48,6 @@ if (process.env.BOT_TOKEN) {
         if (msg.from.id === CONFIG.ADMIN_ID) kb.push([{ text: "🛠 АДМИНКА", callback_data: "adm_main" }]);
         bot.sendMessage(msg.chat.id, `🎰 *TON CASINO*\n\nID: \`${uid}\``, { parse_mode: 'Markdown', reply_markup: { inline_keyboard: kb } });
     });
-    bot.onText(/\/gamecfg/, async (msg) => {
-        if (msg.from.id !== CONFIG.ADMIN_ID) return;
-        bot.sendMessage(msg.chat.id, `🎛 *ИГРОВЫЕ НАСТРОЙКИ*\n\nШанс победы: *${(GAME_SETTINGS.winChance * 100).toFixed(1)}%*\nМножитель: *x${GAME_SETTINGS.winMultiplier}*\nМин. ставка: *${GAME_SETTINGS.minBet} TON*`, {
-            parse_mode: 'Markdown',
-            reply_markup: {
-                inline_keyboard: [
-                    [{ text: "🎯 Изменить шанс", callback_data: "adm_set_chance" }],
-                    [{ text: "💸 Изменить множитель", callback_data: "adm_set_mult" }],
-                    [{ text: "🪙 Изменить мин. ставку", callback_data: "adm_set_minbet" }]
-                ]
-            }
-        });
-    });
-
     bot.on('callback_query', async (q) => {
         if (q.from.id !== CONFIG.ADMIN_ID) return;
         if (q.data === "adm_main") {
@@ -86,9 +66,6 @@ if (process.env.BOT_TOKEN) {
         if (q.data === "adm_mail") { adminSession[q.from.id] = { step: 'mail' }; bot.sendMessage(q.message.chat.id, "Текст рассылки:"); }
         if (q.data === "adm_promo") { adminSession[q.from.id] = { step: 'p_code' }; bot.sendMessage(q.message.chat.id, "Код:"); }
         if (q.data === "adm_balance") { adminSession[q.from.id] = { step: 'b_uid' }; bot.sendMessage(q.message.chat.id, "ID пользователя:"); }
-        if (q.data === "adm_set_chance") { adminSession[q.from.id] = { step: 'g_chance' }; bot.sendMessage(q.message.chat.id, "Новый шанс в % (например 12):"); }
-        if (q.data === "adm_set_mult") { adminSession[q.from.id] = { step: 'g_multi' }; bot.sendMessage(q.message.chat.id, "Новый множитель (например 10):"); }
-        if (q.data === "adm_set_minbet") { adminSession[q.from.id] = { step: 'g_minbet' }; bot.sendMessage(q.message.chat.id, "Новая мин. ставка TON (например 0.05):"); }
         if (q.data === "adm_stats") {
             const [usersCount, promoCount, top] = await Promise.all([
                 User.countDocuments(),
@@ -169,29 +146,6 @@ if (process.env.BOT_TOKEN) {
             return;
         }
 
-        if (s.step === 'g_chance') {
-            const chance = parseFloat(msg.text);
-            if (!Number.isFinite(chance) || chance <= 0 || chance > 100) return bot.sendMessage(msg.chat.id, "❌ Введите число от 0.1 до 100");
-            GAME_SETTINGS.winChance = chance / 100;
-            delete adminSession[msg.from.id];
-            return bot.sendMessage(msg.chat.id, `✅ Шанс обновлен: ${chance}%`);
-        }
-
-        if (s.step === 'g_multi') {
-            const multi = parseFloat(msg.text);
-            if (!Number.isFinite(multi) || multi < 1) return bot.sendMessage(msg.chat.id, "❌ Множитель должен быть >= 1");
-            GAME_SETTINGS.winMultiplier = multi;
-            delete adminSession[msg.from.id];
-            return bot.sendMessage(msg.chat.id, `✅ Множитель обновлен: x${multi}`);
-        }
-
-        if (s.step === 'g_minbet') {
-            const minBet = parseFloat(msg.text);
-            if (!Number.isFinite(minBet) || minBet <= 0) return bot.sendMessage(msg.chat.id, "❌ Неверная ставка");
-            GAME_SETTINGS.minBet = minBet;
-            delete adminSession[msg.from.id];
-            return bot.sendMessage(msg.chat.id, `✅ Мин. ставка обновлена: ${minBet} TON`);
-        }
     });
 }
 
@@ -223,17 +177,17 @@ app.post('/api/spin', async (req, res) => {
     u.balance -= b;
     const items = ['🍒','🔔','💎','7️⃣','🍋'];
     let resArr = [items[Math.floor(Math.random()*5)], items[Math.floor(Math.random()*5)], items[Math.floor(Math.random()*5)]];
-    if (Math.random() < GAME_SETTINGS.winChance) resArr = ['7️⃣','7️⃣','7️⃣'];
+    if (Math.random() < CONFIG.WIN_CHANCE) resArr = ['7️⃣','7️⃣','7️⃣'];
     const isWin = resArr[0] === resArr[1] && resArr[1] === resArr[2];
-    if(isWin) u.balance += b * GAME_SETTINGS.winMultiplier;
+    if(isWin) u.balance += b * CONFIG.WIN_MULTIPLIER;
     u.spins++; if(isWin) u.wins++; await u.save();
-    res.json({ result: resArr, winSum: isWin ? b * GAME_SETTINGS.winMultiplier : 0, balance: u.balance });
+    res.json({ result: resArr, winSum: isWin ? b * CONFIG.WIN_MULTIPLIER : 0, balance: u.balance });
 });
 
 app.get('/api/config', (req, res) => {
     res.json({
         minBet: CONFIG.MIN_BET,
-        bgmUrl: ACTIVE_BGM_URL
+        bgmUrl: CONFIG.BGM_URL
     });
 });
 
