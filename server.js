@@ -37,6 +37,81 @@ const Promo = mongoose.model('Promo', {
 
 app.use(express.json());
 const adminSession = {};
+async function processBalanceStep(step, msg, session, bot) {
+    if (step === 'b_uid') {
+        session.targetUid = msg.text.trim();
+        session.step = 'b_amount';
+        await bot.sendMessage(msg.chat.id, "Введите сумму изменения (например: 1.5 или -0.2):");
+        return true;
+    }
+
+    if (step === 'b_amount') {
+        const delta = parseFloat(msg.text);
+        if (!Number.isFinite(delta)) {
+            await bot.sendMessage(msg.chat.id, "❌ Неверная сумма");
+            return true;
+        }
+        const user = await User.findOne({ uid: session.targetUid });
+        if (!user) {
+            await bot.sendMessage(msg.chat.id, "❌ Пользователь не найден");
+            return true;
+        }
+        user.balance = Math.max(0, user.balance + delta);
+        await user.save();
+        await bot.sendMessage(msg.chat.id, `✅ Баланс пользователя ${user.uid}: ${user.balance.toFixed(2)} TON`);
+        delete adminSession[msg.from.id];
+        return true;
+    }
+    return false;
+}
+async function processPromoStep(step, msg, session, bot) {
+    if (step === 'p_code') {
+        session.code = msg.text.toUpperCase().trim();
+        session.step = 'p_sum';
+        await bot.sendMessage(msg.chat.id, "Сумма:");
+        return true;
+    }
+
+    if (step === 'p_sum') {
+        const sum = parseFloat(msg.text);
+        if (!Number.isFinite(sum) || sum <= 0) {
+            await bot.sendMessage(msg.chat.id, "❌ Неверная сумма");
+            return true;
+        }
+        session.sum = sum;
+        session.step = 'p_lim';
+        await bot.sendMessage(msg.chat.id, "Лимит:");
+        return true;
+    }
+
+    if (step === 'p_lim') {
+        const limit = parseInt(msg.text, 10);
+        if (!Number.isFinite(limit) || limit <= 0) {
+            await bot.sendMessage(msg.chat.id, "❌ Неверный лимит");
+            return true;
+        }
+        await Promo.findOneAndUpdate(
+            { code: session.code },
+            { code: session.code, sum: session.sum, limit, count: 0 },
+            { upsert: true, new: true }
+        );
+        await bot.sendMessage(msg.chat.id, "✅ Промо создан/обновлён");
+        delete adminSession[msg.from.id];
+        return true;
+    }
+    return false;
+}
+async function processMailStep(step, msg, bot) {
+    if (step !== 'mail') return false;
+    const users = await User.find().lean();
+    let ok = 0;
+    for (const u of users) {
+        try { await bot.sendMessage(u.uid, msg.text); ok++; } catch (e) {}
+    }
+    await bot.sendMessage(msg.chat.id, `✅ Готово. Отправлено: ${ok}/${users.length}`);
+    delete adminSession[msg.from.id];
+    return true;
+}
 
 // БОТ И АДМИНКА
 if (process.env.BOT_TOKEN) {
@@ -48,7 +123,6 @@ if (process.env.BOT_TOKEN) {
         if (msg.from.id === CONFIG.ADMIN_ID) kb.push([{ text: "🛠 АДМИНКА", callback_data: "adm_main" }]);
         bot.sendMessage(msg.chat.id, `🎰 *TON CASINO*\n\nID: \`${uid}\``, { parse_mode: 'Markdown', reply_markup: { inline_keyboard: kb } });
     });
-
     bot.on('callback_query', async (q) => {
         if (q.from.id !== CONFIG.ADMIN_ID) return;
         if (q.data === "adm_main") {
@@ -145,6 +219,10 @@ if (process.env.BOT_TOKEN) {
             bot.sendMessage(msg.chat.id, `✅ Баланс пользователя ${user.uid}: ${user.balance.toFixed(2)} TON`);
             delete adminSession[msg.from.id];
         }
+
+        if (await processMailStep(s.step, msg, bot)) return;
+        if (await processPromoStep(s.step, msg, s, bot)) return;
+        if (await processBalanceStep(s.step, msg, s, bot)) return;
     });
 }
 
