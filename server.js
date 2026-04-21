@@ -11,19 +11,16 @@ const CONFIG = {
     ADMIN_ID: 8475323865, 
     WALLET: "UQDoTj0hCwJbI-9fziRCyUZzO2XHmtcDzuiAiGjxG21G3dIX",
     TON_KEY: "fe9429836fd2dfdb009421c6dc389840c9cdadca238477b4e2910250e11fa6d3",
-    WIN_CHANCE: 0.12, 
-    WIN_MULTIPLIER: 10,
     START_BALANCE: 0.10,
-    BG_IMAGE: "https://files.catbox.moe/ep8e91.png",
-    BGM_URL: "https://files.catbox.moe/ef3c37.mp3",
-    MIN_BET: 0.01
+    BG_IMAGE: "https://files.catbox.moe/ep8e91.png"
 };
-const GAME_SETTINGS = {
-    winChance: CONFIG.WIN_CHANCE,
-    winMultiplier: CONFIG.WIN_MULTIPLIER,
-    minBet: CONFIG.MIN_BET
-    BGM_URL: "https://files.catbox.moe/78surr.mp3",
-    MIN_BET: 0.01
+
+// Динамические настройки игры
+let GAME_SETTINGS = {
+    winChance: 0.12, 
+    winMultiplier: 10,
+    minBet: 0.01,
+    bgmUrl: "https://files.catbox.moe/ef3c37.mp3"
 };
 
 mongoose.connect(process.env.MONGO_URI).then(() => console.log("✅ База подключена"));
@@ -44,442 +41,209 @@ const Promo = mongoose.model('Promo', {
 
 app.use(express.json());
 const adminSession = {};
-async function processBalanceStep(step, msg, session, bot) {
-    if (step === 'b_uid') {
-        session.targetUid = msg.text.trim();
-        session.step = 'b_amount';
-        await bot.sendMessage(msg.chat.id, "Введите сумму изменения (например: 1.5 или -0.2):");
-        return true;
-    }
 
-    if (step === 'b_amount') {
-        const delta = parseFloat(msg.text);
-        if (!Number.isFinite(delta)) {
-            await bot.sendMessage(msg.chat.id, "❌ Неверная сумма");
-            return true;
-        }
-        const user = await User.findOne({ uid: session.targetUid });
-        if (!user) {
-            await bot.sendMessage(msg.chat.id, "❌ Пользователь не найден");
-            return true;
-        }
-        user.balance = Math.max(0, user.balance + delta);
-        await user.save();
-        await bot.sendMessage(msg.chat.id, `✅ Баланс пользователя ${user.uid}: ${user.balance.toFixed(2)} TON`);
-        delete adminSession[msg.from.id];
-        return true;
-    }
-    return false;
-}
-async function processPromoStep(step, msg, session, bot) {
-    if (step === 'p_code') {
-        session.code = msg.text.toUpperCase().trim();
-        session.step = 'p_sum';
-        await bot.sendMessage(msg.chat.id, "Сумма:");
-        return true;
-    }
-
-    if (step === 'p_sum') {
-        const sum = parseFloat(msg.text);
-        if (!Number.isFinite(sum) || sum <= 0) {
-            await bot.sendMessage(msg.chat.id, "❌ Неверная сумма");
-            return true;
-        }
-        session.sum = sum;
-        session.step = 'p_lim';
-        await bot.sendMessage(msg.chat.id, "Лимит:");
-        return true;
-    }
-
-    if (step === 'p_lim') {
-        const limit = parseInt(msg.text, 10);
-        if (!Number.isFinite(limit) || limit <= 0) {
-            await bot.sendMessage(msg.chat.id, "❌ Неверный лимит");
-            return true;
-        }
-        await Promo.findOneAndUpdate(
-            { code: session.code },
-            { code: session.code, sum: session.sum, limit, count: 0 },
-            { upsert: true, new: true }
-        );
-        await bot.sendMessage(msg.chat.id, "✅ Промо создан/обновлён");
-        delete adminSession[msg.from.id];
-        return true;
-    }
-    return false;
-}
-async function processMailStep(step, msg, bot) {
-    if (step !== 'mail') return false;
-    const users = await User.find().lean();
-    let ok = 0;
-    for (const u of users) {
-        try { await bot.sendMessage(u.uid, msg.text); ok++; } catch (e) {}
-    }
-    await bot.sendMessage(msg.chat.id, `✅ Готово. Отправлено: ${ok}/${users.length}`);
-    delete adminSession[msg.from.id];
-    return true;
-}
-
-// БОТ И АДМИНКА
+// --- БОТ И ПОЛНОЦЕННАЯ АДМИНКА ---
 if (process.env.BOT_TOKEN) {
     const bot = new TelegramBot(process.env.BOT_TOKEN, { polling: true });
+
     bot.onText(/\/start/, async (msg) => {
         const uid = msg.from.id.toString();
         await User.findOneAndUpdate({ uid }, { uid }, { upsert: true });
         const kb = [[{ text: "🎰 ИГРАТЬ", web_app: { url: process.env.APP_URL } }]];
         if (msg.from.id === CONFIG.ADMIN_ID) kb.push([{ text: "🛠 АДМИНКА", callback_data: "adm_main" }]);
-        bot.sendMessage(msg.chat.id, `🎰 *TON CASINO*\n\nID: \`${uid}\``, { parse_mode: 'Markdown', reply_markup: { inline_keyboard: kb } });
+        bot.sendMessage(msg.chat.id, `🎰 *TON CASINO*\n\nВаш ID для пополнения: \`${uid}\``, { 
+            parse_mode: 'Markdown', 
+            reply_markup: { inline_keyboard: kb } 
+        });
     });
+
     bot.on('callback_query', async (q) => {
         if (q.from.id !== CONFIG.ADMIN_ID) return;
+        const cid = q.message.chat.id;
+
         if (q.data === "adm_main") {
-            bot.sendMessage(q.message.chat.id, "🛠 *МЕНЮ*", {
+            bot.sendMessage(cid, "🛠 *ГЛАВНОЕ МЕНЮ*", {
                 parse_mode: 'Markdown',
                 reply_markup: {
                     inline_keyboard: [
-                        [{ text: "📢 РАССЫЛКА", callback_data: "adm_mail" }],
-                        [{ text: "🎁 ПРОМО", callback_data: "adm_promo" }],
-                        [{ text: "📊 СТАТИСТИКА", callback_data: "adm_stats" }],
-                        [{ text: "💰 ИЗМЕНИТЬ БАЛАНС", callback_data: "adm_balance" }],
+                        [{ text: "📢 РАССЫЛКА", callback_data: "adm_mail" }, { text: "🎁 ПРОМО", callback_data: "adm_promo" }],
+                        [{ text: "📊 СТАТИСТИКА", callback_data: "adm_stats" }, { text: "💰 БАЛАНС", callback_data: "adm_balance" }],
                         [{ text: "🎛 НАСТРОЙКИ ИГРЫ", callback_data: "adm_game" }]
-                        [{ text: "💰 ИЗМЕНИТЬ БАЛАНС", callback_data: "adm_balance" }]
                     ]
                 }
             });
         }
-        if (q.data === "adm_mail") { adminSession[q.from.id] = { step: 'mail' }; bot.sendMessage(q.message.chat.id, "Текст рассылки:"); }
-        if (q.data === "adm_promo") { adminSession[q.from.id] = { step: 'p_code' }; bot.sendMessage(q.message.chat.id, "Код:"); }
-        if (q.data === "adm_balance") { adminSession[q.from.id] = { step: 'b_uid' }; bot.sendMessage(q.message.chat.id, "ID пользователя:"); }
-        if (q.data === "adm_game") {
-            bot.sendMessage(q.message.chat.id, `🎛 *ИГРОВЫЕ НАСТРОЙКИ*\n\nШанс победы: *${(GAME_SETTINGS.winChance * 100).toFixed(1)}%*\nМножитель: *x${GAME_SETTINGS.winMultiplier}*\nМин. ставка: *${GAME_SETTINGS.minBet} TON*`, {
-                parse_mode: 'Markdown',
-                reply_markup: {
-                    inline_keyboard: [
-                        [{ text: "🎯 Изменить шанс", callback_data: "adm_set_chance" }],
-                        [{ text: "💸 Изменить множитель", callback_data: "adm_set_mult" }],
-                        [{ text: "🪙 Изменить мин. ставку", callback_data: "adm_set_minbet" }]
-                    ]
-                }
-            });
-        }
-        if (q.data === "adm_set_chance") { adminSession[q.from.id] = { step: 'g_chance' }; bot.sendMessage(q.message.chat.id, "Новый шанс в % (например 12):"); }
-        if (q.data === "adm_set_mult") { adminSession[q.from.id] = { step: 'g_multi' }; bot.sendMessage(q.message.chat.id, "Новый множитель (например 10):"); }
-        if (q.data === "adm_set_minbet") { adminSession[q.from.id] = { step: 'g_minbet' }; bot.sendMessage(q.message.chat.id, "Новая мин. ставка TON (например 0.05):"); }
+
         if (q.data === "adm_stats") {
-            const [usersCount, promoCount, top] = await Promise.all([
-                User.countDocuments(),
-                Promo.countDocuments(),
-                User.find().sort({ balance: -1 }).limit(5).lean()
-            ]);
-            const topRows = top.length
-                ? top.map((u, i) => `${i + 1}. \`${u.uid}\` — *${u.balance.toFixed(2)} TON*`).join('\n')
-                : "_Пока пусто_";
-            bot.sendMessage(
-                q.message.chat.id,
-                `📊 *СТАТИСТИКА*\n\nПользователей: *${usersCount}*\nПромокодов: *${promoCount}*\n\n🏆 *ТОП БАЛАНСОВ*\n${topRows}`,
-                { parse_mode: 'Markdown' }
-            );
+            const count = await User.countDocuments();
+            const top = await User.find().sort({balance: -1}).limit(5);
+            let text = `📊 *СТАТИСТИКА*\nЮзеров: ${count}\n\n🏆 *ТОП БАЛАНСОВ:*`;
+            top.forEach((u, i) => text += `\n${i+1}. \`${u.uid}\` - ${u.balance.toFixed(2)} TON`);
+            bot.sendMessage(cid, text, { parse_mode: 'Markdown' });
         }
+
+        if (q.data === "adm_mail") { adminSession[q.from.id] = { step: 'mail' }; bot.sendMessage(cid, "Введите текст рассылки:"); }
+        if (q.data === "adm_promo") { adminSession[q.from.id] = { step: 'p_code' }; bot.sendMessage(cid, "Введите код нового промо:"); }
+        if (q.data === "adm_balance") { adminSession[q.from.id] = { step: 'b_uid' }; bot.sendMessage(cid, "Введите ID юзера:"); }
+        
+        if (q.data === "adm_game") {
+            bot.sendMessage(cid, `🎛 *ИГРОВЫЕ НАСТРОЙКИ*\nШанс: ${GAME_SETTINGS.winChance*100}%\nМножитель: x${GAME_SETTINGS.winMultiplier}`, {
+                parse_mode: 'Markdown',
+                reply_markup: { inline_keyboard: [[{text: "🎯 Шанс", callback_data: "set_ch"}, {text: "💸 X", callback_data: "set_mult"}]] }
+            });
+        }
+        if (q.data === "set_ch") { adminSession[q.from.id] = { step: 'g_ch' }; bot.sendMessage(cid, "Новый шанс (0-100):"); }
+        if (q.data === "set_mult") { adminSession[q.from.id] = { step: 'g_ml' }; bot.sendMessage(cid, "Новый множитель:"); }
     });
 
     bot.on('message', async (msg) => {
         const s = adminSession[msg.from.id]; if (!s || msg.text?.startsWith('/')) return;
-        if (msg.text.toLowerCase() === 'отмена') {
-            delete adminSession[msg.from.id];
-            return bot.sendMessage(msg.chat.id, "❌ Отменено");
-        }
-
-        }
-
+        
         if (s.step === 'mail') {
-            const users = await User.find().lean();
-            let ok = 0;
-            for (const u of users) {
-                try { await bot.sendMessage(u.uid, msg.text); ok++; } catch (e) {}
-            }
-            bot.sendMessage(msg.chat.id, `✅ Готово. Отправлено: ${ok}/${users.length}`);
+            const users = await User.find();
+            for (let u of users) { try { await bot.sendMessage(u.uid, msg.text); } catch(e){} }
+            bot.sendMessage(msg.chat.id, "✅ Готово"); delete adminSession[msg.from.id];
+        }
+        else if (s.step === 'p_code') { s.code = msg.text.toUpperCase(); s.step = 'p_sum'; bot.sendMessage(msg.chat.id, "Сумма промо:"); }
+        else if (s.step === 'p_sum') { s.sum = parseFloat(msg.text); s.step = 'p_lim'; bot.sendMessage(msg.chat.id, "Кол-во активаций:"); }
+        else if (s.step === 'p_lim') {
+            await new Promo({ code: s.code, sum: s.sum, limit: parseInt(msg.text) }).save();
+            bot.sendMessage(msg.chat.id, "✅ Промо создан"); delete adminSession[msg.from.id];
+        }
+        else if (s.step === 'b_uid') { s.target = msg.text; s.step = 'b_val'; bot.sendMessage(msg.chat.id, "Сумма изменения баланса (напр. 5 или -5):"); }
+        else if (s.step === 'b_val') {
+            const u = await User.findOne({ uid: s.target });
+            if (u) { u.balance += parseFloat(msg.text); await u.save(); bot.sendMessage(msg.chat.id, "✅ Баланс обновлен"); }
+            else { bot.sendMessage(msg.chat.id, "❌ Юзер не найден"); }
             delete adminSession[msg.from.id];
-            return;
         }
-
-        if (s.step === 'p_code') {
-            s.code = msg.text.toUpperCase().trim();
-            s.step = 'p_sum';
-            return bot.sendMessage(msg.chat.id, "Сумма:");
-        }
-
-        if (s.step === 'p_sum') {
-            const sum = parseFloat(msg.text);
-            if (!Number.isFinite(sum) || sum <= 0) return bot.sendMessage(msg.chat.id, "❌ Неверная сумма");
-            s.sum = sum;
-            s.step = 'p_lim';
-            return bot.sendMessage(msg.chat.id, "Лимит:");
-        }
-
-        if (s.step === 'p_lim') {
-            const limit = parseInt(msg.text, 10);
-            if (!Number.isFinite(limit) || limit <= 0) return bot.sendMessage(msg.chat.id, "❌ Неверный лимит");
-            await Promo.findOneAndUpdate(
-                { code: s.code },
-                { code: s.code, sum: s.sum, limit, count: 0 },
-                { upsert: true, new: true }
-            );
-            bot.sendMessage(msg.chat.id, "✅ Промо создан/обновлён");
-            delete adminSession[msg.from.id];
-            return;
-        }
-
-        if (s.step === 'b_uid') {
-            s.targetUid = msg.text.trim();
-            s.step = 'b_amount';
-            return bot.sendMessage(msg.chat.id, "Введите сумму изменения (например: 1.5 или -0.2):");
-        }
-
-        }
-
-        if (s.step === 'p_code') {
-            s.code = msg.text.toUpperCase().trim();
-            s.step = 'p_sum';
-            return bot.sendMessage(msg.chat.id, "Сумма:");
-        }
-
-        if (s.step === 'p_sum') {
-            const sum = parseFloat(msg.text);
-            if (!Number.isFinite(sum) || sum <= 0) return bot.sendMessage(msg.chat.id, "❌ Неверная сумма");
-            s.sum = sum;
-            s.step = 'p_lim';
-            return bot.sendMessage(msg.chat.id, "Лимит:");
-        }
-
-        if (s.step === 'p_lim') {
-            const limit = parseInt(msg.text, 10);
-            if (!Number.isFinite(limit) || limit <= 0) return bot.sendMessage(msg.chat.id, "❌ Неверный лимит");
-            await Promo.findOneAndUpdate(
-                { code: s.code },
-                { code: s.code, sum: s.sum, limit, count: 0 },
-                { upsert: true, new: true }
-            );
-            bot.sendMessage(msg.chat.id, "✅ Промо создан/обновлён");
-            delete adminSession[msg.from.id];
-            return;
-        }
-
-        if (s.step === 'b_uid') {
-            s.targetUid = msg.text.trim();
-            s.step = 'b_amount';
-            return bot.sendMessage(msg.chat.id, "Введите сумму изменения (например: 1.5 или -0.2):");
-        }
-
-        if (s.step === 'b_amount') {
-            const delta = parseFloat(msg.text);
-            if (!Number.isFinite(delta)) return bot.sendMessage(msg.chat.id, "❌ Неверная сумма");
-            const user = await User.findOne({ uid: s.targetUid });
-            if (!user) return bot.sendMessage(msg.chat.id, "❌ Пользователь не найден");
-            user.balance = Math.max(0, user.balance + delta);
-            await user.save();
-            bot.sendMessage(msg.chat.id, `✅ Баланс пользователя ${user.uid}: ${user.balance.toFixed(2)} TON`);
-            delete adminSession[msg.from.id];
-            return;
-        }
-
-        if (s.step === 'g_chance') {
-            const chance = parseFloat(msg.text);
-            if (!Number.isFinite(chance) || chance <= 0 || chance > 100) return bot.sendMessage(msg.chat.id, "❌ Введите число от 0.1 до 100");
-            GAME_SETTINGS.winChance = chance / 100;
-            delete adminSession[msg.from.id];
-            return bot.sendMessage(msg.chat.id, `✅ Шанс обновлен: ${chance}%`);
-        }
-
-        if (s.step === 'g_multi') {
-            const multi = parseFloat(msg.text);
-            if (!Number.isFinite(multi) || multi < 1) return bot.sendMessage(msg.chat.id, "❌ Множитель должен быть >= 1");
-            GAME_SETTINGS.winMultiplier = multi;
-            delete adminSession[msg.from.id];
-            return bot.sendMessage(msg.chat.id, `✅ Множитель обновлен: x${multi}`);
-        }
-
-        if (s.step === 'g_minbet') {
-            const minBet = parseFloat(msg.text);
-            if (!Number.isFinite(minBet) || minBet <= 0) return bot.sendMessage(msg.chat.id, "❌ Неверная ставка");
-            GAME_SETTINGS.minBet = minBet;
-            delete adminSession[msg.from.id];
-            return bot.sendMessage(msg.chat.id, `✅ Мин. ставка обновлена: ${minBet} TON`);
-        }
-
-        if (await processMailStep(s.step, msg, bot)) return;
-        if (await processPromoStep(s.step, msg, s, bot)) return;
-        if (await processBalanceStep(s.step, msg, s, bot)) return;
+        else if (s.step === 'g_ch') { GAME_SETTINGS.winChance = parseFloat(msg.text)/100; bot.sendMessage(msg.chat.id, "✅ Шанс изменен"); delete adminSession[msg.from.id]; }
+        else if (s.step === 'g_ml') { GAME_SETTINGS.winMultiplier = parseFloat(msg.text); bot.sendMessage(msg.chat.id, "✅ Множитель изменен"); delete adminSession[msg.from.id]; }
     });
 }
-
-// СКАНЕР ОПЛАТ
+// --- СКАНЕР ТРАНЗАКЦИЙ TON (Авто-зачисление) ---
 setInterval(async () => {
     try {
-        const r = await axios.get(`https://toncenter.com/api/v2/getTransactions?address=${CONFIG.WALLET}&limit=10&api_key=${CONFIG.TON_KEY}`);
+        const r = await axios.get(`https://toncenter.com/api/v2/getTransactions?address=${CONFIG.WALLET}&limit=15&api_key=${CONFIG.TON_KEY}`);
         if (r.data.ok) {
             for (let tx of r.data.result) {
                 const comment = tx.in_msg?.message?.trim();
                 const lt = tx.transaction_id.lt;
                 const val = parseInt(tx.in_msg?.value || 0) / 1e9;
+                if (!comment) continue;
                 const u = await User.findOne({ uid: comment });
-                if (u && BigInt(lt) > BigInt(u.last_lt)) { u.balance += val; u.last_lt = lt.toString(); await u.save(); }
+                if (u && BigInt(lt) > BigInt(u.last_lt)) { 
+                    u.balance += val; 
+                    u.last_lt = lt.toString(); 
+                    await u.save(); 
+                }
             }
         }
     } catch (e) {}
-}, 30000);
+}, 25000);
+
+// --- API ДЛЯ ПРИЛОЖЕНИЯ ---
 app.post('/api/sync', async (req, res) => {
     const u = await User.findOne({ uid: req.body.uid?.toString() });
     res.json(u || { balance: 0, spins: 0, wins: 0 });
 });
 
 app.post('/api/spin', async (req, res) => {
-    const { uid, bet } = req.body; const b = parseFloat(bet);
-    if (!Number.isFinite(b) || b < GAME_SETTINGS.minBet) return res.json({ err: `Мин. ставка ${GAME_SETTINGS.minBet} TON` });
-    if (!Number.isFinite(b) || b < CONFIG.MIN_BET) return res.json({ err: `Мин. ставка ${CONFIG.MIN_BET} TON` });
+    const { uid, bet } = req.body; 
+    const b = parseFloat(bet);
+    if (!b || b < GAME_SETTINGS.minBet) return res.json({ err: "Мин. ставка: " + GAME_SETTINGS.minBet });
     const u = await User.findOne({ uid: uid.toString() });
-    if (!u || u.balance < b) return res.json({ err: "Мало TON" });
+    if (!u || u.balance < b) return res.json({ err: "Недостаточно TON" });
     u.balance -= b;
     const items = ['🍒','🔔','💎','7️⃣','🍋'];
     let resArr = [items[Math.floor(Math.random()*5)], items[Math.floor(Math.random()*5)], items[Math.floor(Math.random()*5)]];
     if (Math.random() < GAME_SETTINGS.winChance) resArr = ['7️⃣','7️⃣','7️⃣'];
     const isWin = resArr[0] === resArr[1] && resArr[1] === resArr[2];
-    if(isWin) u.balance += b * GAME_SETTINGS.winMultiplier;
-    u.spins++; if(isWin) u.wins++; await u.save();
-    res.json({ result: resArr, winSum: isWin ? b * GAME_SETTINGS.winMultiplier : 0, balance: u.balance });
-});
-
-app.get('/api/config', (req, res) => {
-    res.json({
-        minBet: GAME_SETTINGS.minBet,
-        bgmUrl: CONFIG.BGM_URL
-    });
-});
-
-app.get('/api/config', (req, res) => {
-    res.json({
-        minBet: CONFIG.MIN_BET,
-        bgmUrl: CONFIG.BGM_URL
-    });
+    const winSum = isWin ? b * GAME_SETTINGS.winMultiplier : 0;
+    u.balance += winSum; u.spins++; if(isWin) u.wins++;
+    await u.save();
+    res.json({ result: resArr, winSum, balance: u.balance });
 });
 
 app.post('/api/promo', async (req, res) => {
     const { uid, code } = req.body;
     const p = await Promo.findOne({ code: code.toUpperCase() });
     const u = await User.findOne({ uid: uid.toString() });
-    if (!p || p.count >= p.limit || u.used_promos.includes(p.code)) return res.json({ err: "Ошибка" });
+    if (!p || p.count >= p.limit || u.used_promos.includes(p.code)) return res.json({ err: "Ошибка кода" });
     u.balance += p.sum; u.used_promos.push(p.code); p.count++;
     await u.save(); await p.save();
-    res.json({ msg: "Бонус!", balance: u.balance });
+    res.json({ msg: "Бонус получен!", balance: u.balance });
 });
 
+// --- ВЕРСТКА И ДИЗАЙН ---
 app.get('/', (req, res) => {
     res.send(`
 <!DOCTYPE html><html><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <script src="https://telegram.org/js/telegram-web-app.js"></script>
 <style>
-    body { margin:0; padding:0; font-family:Arial,sans-serif; text-align:center; height:100vh; color:#fff; background:#000 url('${CONFIG.BG_IMAGE}') no-repeat center center fixed; background-size:cover; overflow:hidden; }
-    body::before { content:""; position:absolute; inset:0; background:radial-gradient(circle at top, rgba(255,0,230,0.28), rgba(8,10,33,0.86)); z-index:-1; }
-    .nav { display:flex; background:linear-gradient(90deg, rgba(255,0,212,0.42), rgba(0,238,255,0.36)); border-bottom:1px solid rgba(255,255,255,0.4); position:sticky; top:0; z-index:2; box-shadow:0 8px 20px rgba(0,0,0,0.35); }
-    .tab { flex:1; padding:14px 8px; font-weight:bold; opacity:0.75; font-size:11px; cursor:pointer; text-shadow:0 0 8px rgba(255,255,255,0.45); }
-    .tab.active { opacity:1; color:#fff; border-bottom:2px solid #fff; background:rgba(255,255,255,0.12); }
-    body::before { content:""; position:absolute; top:0; left:0; width:100%; height:100%; background:rgba(0,0,0,0.6); z-index:-1; }
-    .nav { display:flex; background:rgba(0,0,0,0.8); border-bottom:2px solid #ff00ff; position:sticky; top:0; z-index:2; }
-    .tab { flex:1; padding:14px 8px; font-weight:bold; opacity:0.6; font-size:11px; cursor:pointer; }
+    body { margin:0; padding:0; font-family:sans-serif; text-align:center; height:100vh; color:#fff; background:#000 url('${CONFIG.BG_IMAGE}') no-repeat center center fixed; background-size:cover; overflow:hidden; }
+    body::before { content:""; position:absolute; inset:0; background:rgba(0,0,0,0.65); z-index:-1; }
+    .nav { display:flex; background:rgba(0,0,0,0.85); border-bottom:1px solid #ff00ff; position:sticky; top:0; z-index:10; }
+    .tab { flex:1; padding:15px; font-weight:bold; opacity:0.6; font-size:12px; cursor:pointer; }
     .tab.active { opacity:1; color:#00ffff; border-bottom:2px solid #00ffff; }
     .page { display:none; padding:20px; height:85vh; overflow-y:auto; box-sizing:border-box; }
     .page.active { display:block; }
-    .card { background:linear-gradient(145deg, rgba(14,17,50,0.82), rgba(50,12,67,0.72)); border:1px solid rgba(0,255,247,0.55); padding:15px; margin-bottom:15px; border-radius:14px; backdrop-filter:blur(6px); box-shadow:0 0 18px rgba(255,0,229,0.35), inset 0 0 16px rgba(0,217,255,0.14); }
-    .bal-val { font-size:36px; color:#fffb00; font-weight:bold; text-shadow:0 0 16px rgba(255,242,0,0.7); }
-    .copy-box { background:rgba(0,0,0,0.4); border:1px dashed #00ffff; padding:12px; margin:10px 0; font-family:monospace; font-size:11px; color:#75f9ff; cursor:pointer; border-radius:8px; word-break:break-all; }
-    .reel-cont { display:flex; justify-content:center; gap:8px; margin:20px 0; }
-    .reel { width:80px; height:100px; background:linear-gradient(180deg,#02030e,#161638); border:2px solid #fff; overflow:hidden; position:relative; border-radius:10px; box-shadow:0 0 16px rgba(0,255,255,0.5); }
+    .card { background:rgba(255,255,255,0.1); border:1px solid rgba(0,255,255,0.3); padding:15px; margin-bottom:15px; border-radius:15px; backdrop-filter:blur(8px); }
+    .bal-val { font-size:38px; color:#ffff00; font-weight:bold; text-shadow:0 0 10px rgba(255,255,0,0.5); }
+    .copy-box { background:#000; border:1px dashed #00ffff; padding:12px; margin:10px 0; font-family:monospace; font-size:11px; color:#00ffff; cursor:pointer; border-radius:10px; word-break:break-all; }
+    .reel-cont { display:flex; justify-content:center; gap:10px; margin:20px 0; }
+    .reel { width:85px; height:110px; background:#000; border:2px solid #fff; overflow:hidden; position:relative; border-radius:12px; }
     .strip { width:100%; position:absolute; top:0; left:0; }
-    .sym { height:100px; display:flex; align-items:center; justify-content:center; font-size:50px; }
-    .btn-main { width:100%; padding:16px; background:linear-gradient(90deg,#ffe600,#ff8c00); color:#120019; border:none; font-size:18px; font-weight:bold; border-radius:12px; cursor:pointer; box-shadow:0 8px 18px rgba(255,179,0,0.5); }
-    .btn-main:disabled { opacity:0.6; cursor:not-allowed; }
-    input, select { width:90%; padding:12px; margin:10px 0; background:rgba(0,0,0,0.45); border:1px solid rgba(255,255,255,0.7); color:#fff; text-align:center; border-radius:8px; }
-    .btn-main { width:100%; padding:16px; background:#ffff00; color:#000; border:none; font-size:18px; font-weight:bold; border-radius:12px; cursor:pointer; }
-    .btn-main:disabled { opacity:0.6; cursor:not-allowed; }
-    input, select { width:90%; padding:12px; margin:10px 0; background:#000; border:1px solid #fff; color:#fff; text-align:center; border-radius:8px; }
-    .setting-row { display:flex; justify-content:space-between; align-items:center; margin:12px 0; gap:8px; text-align:left; }
-    .toggle { width:22px; height:22px; }
-    .hint { font-size:12px; opacity:0.8; }
+    .sym { height:110px; display:flex; align-items:center; justify-content:center; font-size:55px; }
+    .btn-main { width:100%; padding:18px; background:#ffff00; color:#000; border:none; font-size:20px; font-weight:bold; border-radius:15px; cursor:pointer; }
+    input { width:90%; padding:12px; margin:10px 0; background:#000; border:1px solid #fff; color:#fff; text-align:center; border-radius:10px; }
 </style></head>
 <body>
+    <audio id="bgm" loop src="${GAME_SETTINGS.bgmUrl}"></audio>
     <div class="nav">
         <div class="tab active" onclick="sh(1)" id="t1">ИГРА</div>
         <div class="tab" onclick="sh(2)" id="t2">СТАТЫ</div>
         <div class="tab" onclick="sh(3)" id="t3">КАССА</div>
-        <div class="tab" onclick="sh(4)" id="t4">НАСТРОЙКИ</div>
+        <div class="tab" onclick="sh(4)" id="t4">⚙️</div>
     </div>
     <div id="p1" class="page active">
         <div class="card"><div>БАЛАНС</div><div id="bal" class="bal-val">0.00</div></div>
         <div class="reel-cont"><div class="reel"><div class="strip" id="s1"></div></div><div class="reel"><div class="strip" id="s2"></div></div><div class="reel"><div class="strip" id="s3"></div></div></div>
-        <input type="number" id="bet" value="${GAME_SETTINGS.minBet}" step="0.01" min="${GAME_SETTINGS.minBet}">
-        <input type="number" id="bet" value="${CONFIG.MIN_BET}" step="0.01" min="${CONFIG.MIN_BET}">
+        <input type="number" id="bet" value="0.1" step="0.1" min="0.01">
         <button class="btn-main" onclick="spin()" id="sBtn">ИГРАТЬ</button>
-        <div class="card" style="margin-top:20px"><input id="p-in" placeholder="ПРОМОКОД"><br><button onclick="applyP()" style="color:#00ffff; background:none; border:none; font-weight:bold;">АКТИВИРОВАТЬ</button></div>
+        <div class="card" style="margin-top:20px"><input id="p-in" placeholder="ПРОМОКОД"><br><button onclick="applyP()" style="color:#00ffff; background:none; border:none; font-weight:bold; cursor:pointer;">АКТИВИРОВАТЬ</button></div>
     </div>
     <div id="p2" class="page"><div class="card"><h3>СТАТИСТИКА</h3><p>Спинов: <span id="st-s">0</span></p><p>Побед: <span id="st-w">0</span></p></div></div>
     <div id="p3" class="page">
         <div class="card"><h3>ПОПОЛНЕНИЕ</h3><p style="font-size:10px">Нажми на адрес:</p><div class="copy-box" onclick="copyText('${CONFIG.WALLET}')">${CONFIG.WALLET}</div>
-        <p style="margin-top:20px">ТВОЙ ID (В КОММЕНТАРИЙ):</p><div class="copy-box" style="font-size:20px" id="u-id-box" onclick="copyText(window.uid)">...</div></div>
+        <p style="margin-top:20px">ТВОЙ ID (В КОММЕНТАРИЙ):</p><div class="copy-box" style="font-size:24px; font-weight:bold;" id="u-id-box" onclick="copyText(window.uid)">...</div></div>
     </div>
     <div id="p4" class="page">
-        <div class="card">
-            <h3>НАСТРОЙКИ</h3>
-            <div class="setting-row"><span>Музыка в игре</span><input id="music-enabled" class="toggle" type="checkbox" checked></div>
-            <div class="setting-row"><span>Громкость</span><input id="volume" type="range" min="0" max="100" value="35"></div>
-            <div class="setting-row"><span>Вибро-отклик</span><input id="vibe-enabled" class="toggle" type="checkbox" checked></div>
-            <div class="hint">Музыка стартует после первого нажатия в Telegram WebApp.</div>
-        </div>
+        <div class="card"><h3>НАСТРОЙКИ</h3><button onclick="toggleM()" id="mBtn" style="width:100%; padding:15px; background:#222; color:#fff; border:1px solid #ff00ff; border-radius:10px;">🔇 МУЗЫКА: ВЫКЛ</button></div>
     </div>
     <script>
         const tg = window.Telegram.WebApp; window.uid = tg.initDataUnsafe?.user?.id?.toString() || "12345";
-        const items = ['🍒','🔔','💎','7️⃣','🍋'];
-        const audio = new Audio();
-        audio.loop = true;
-        let cfg = { minBet: ${GAME_SETTINGS.minBet}, bgmUrl: "${CONFIG.BGM_URL}" };
-        let cfg = { minBet: ${CONFIG.MIN_BET}, bgmUrl: "${CONFIG.BGM_URL}" };
-        const defaults = { musicEnabled: true, volume: 35, vibeEnabled: true };
-        const settings = {
-            musicEnabled: localStorage.getItem('musicEnabled') !== null ? localStorage.getItem('musicEnabled') === 'true' : defaults.musicEnabled,
-            volume: parseInt(localStorage.getItem('volume') || defaults.volume, 10),
-            vibeEnabled: localStorage.getItem('vibeEnabled') !== null ? localStorage.getItem('vibeEnabled') === 'true' : defaults.vibeEnabled
-        };
-        function maybeVibe(type='success'){ if(settings.vibeEnabled) tg.HapticFeedback.notificationOccurred(type); }
-        function saveSettings(){ localStorage.setItem('musicEnabled', settings.musicEnabled); localStorage.setItem('volume', settings.volume); localStorage.setItem('vibeEnabled', settings.vibeEnabled); }
-        function applyAudioSettings(){ audio.volume = Math.max(0, Math.min(1, settings.volume/100)); if(!settings.musicEnabled){audio.pause();} else {audio.play().catch(()=>{});} }
-        async function initConfig(){ try { const r = await fetch('/api/config'); cfg = await r.json(); } catch(e){} audio.src = cfg.bgmUrl; document.getElementById('bet').min = cfg.minBet; if(parseFloat(document.getElementById('bet').value) < cfg.minBet) document.getElementById('bet').value = cfg.minBet; }
-        function copyText(t){const e=document.createElement('textarea');e.value=t;document.body.appendChild(e);e.select();document.execCommand('copy');document.body.removeChild(e);maybeVibe('success');tg.showAlert("Скопировано!");}
+        const items = ['🍒','🔔','💎','7️⃣','🍋']; const bgm = document.getElementById('bgm');
+        function copyText(t){const e=document.createElement('textarea');e.value=t;document.body.appendChild(e);e.select();document.execCommand('copy');document.body.removeChild(e);tg.HapticFeedback.notificationOccurred('success');tg.showAlert("Скопировано!");}
+        function toggleM(){ if(bgm.paused){bgm.play(); document.getElementById('mBtn').innerText='🔊 МУЗЫКА: ВКЛ';} else {bgm.pause(); document.getElementById('mBtn').innerText='🔇 МУЗЫКА: ВЫКЛ';}}
         function sh(n){document.querySelectorAll('.page').forEach((p,i)=>p.classList.toggle('active',i+1===n));document.querySelectorAll('.tab').forEach((t,i)=>t.classList.toggle('active',i+1===n));sync();}
         async function sync(){
             const r=await fetch('/api/sync',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({uid:window.uid})});
-            const d=await r.json();document.getElementById('bal').innerText=d.balance.toFixed(2);
-            document.getElementById('u-id-box').innerText=window.uid;document.getElementById('st-s').innerText=d.spins;document.getElementById('st-w').innerText=d.wins;
+            const d=await r.json(); document.getElementById('bal').innerText=d.balance.toFixed(2);
+            document.getElementById('u-id-box').innerText=window.uid; document.getElementById('st-s').innerText=d.spins; document.getElementById('st-w').innerText=d.wins;
         }
         function build(){[1,2,3].forEach(i=>{const s=document.getElementById('s'+i);s.innerHTML='';for(let j=0;j<41;j++)s.innerHTML+='<div class="sym">'+items[Math.floor(Math.random()*5)]+'</div>';});}
         async function spin(){
             const b=parseFloat(document.getElementById('bet').value);
-            if (!Number.isFinite(b) || b < cfg.minBet) return tg.showAlert("Мин. ставка: " + cfg.minBet + " TON");
             const r=await fetch('/api/spin',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({uid:window.uid,bet:b})});
             const d=await r.json();if(d.err)return tg.showAlert(d.err);
-            document.getElementById('sBtn').disabled=true;
-            [1,2,3].forEach(i=>{const s=document.getElementById('s'+i);s.lastElementChild.innerText=d.result[i-1];s.style.transition='none';s.style.transform='translateY(0)';setTimeout(()=>{s.style.transition='transform '+(2+i*0.5)+'s cubic-bezier(0.1,0.9,0.1,1)';s.style.transform='translateY(-4000px)';},50);});
-            maybeVibe('success');
-            setTimeout(()=>{sync();document.getElementById('sBtn').disabled=false;if(d.winSum>0){maybeVibe('success');tg.showAlert("ПОБЕДА! +"+d.winSum);}},4000);
+            document.getElementById('sBtn').disabled=true; tg.HapticFeedback.impactOccurred('medium');
+            [1,2,3].forEach(i=>{const s=document.getElementById('s'+i);s.lastElementChild.innerText=d.result[i-1];s.style.transition='none';s.style.transform='translateY(0)';setTimeout(()=>{s.style.transition='transform '+(2+i*0.5)+'s cubic-bezier(0.1,0.9,0.1,1)';s.style.transform='translateY(-4400px)';},50);});
+            setTimeout(()=>{sync();document.getElementById('sBtn').disabled=false;if(d.winSum>0)tg.showAlert("ПОБЕДА! +"+d.winSum+" TON");},4000);
         }
         async function applyP(){ const code=document.getElementById('p-in').value; const r=await fetch('/api/promo',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({uid:window.uid,code})}); const d=await r.json(); tg.showAlert(d.err||d.msg); sync(); }
-        document.getElementById('music-enabled').checked = settings.musicEnabled;
-        document.getElementById('vibe-enabled').checked = settings.vibeEnabled;
-        document.getElementById('volume').value = settings.volume;
-        document.getElementById('music-enabled').addEventListener('change', (e)=>{settings.musicEnabled=e.target.checked; saveSettings(); applyAudioSettings();});
-        document.getElementById('vibe-enabled').addEventListener('change', (e)=>{settings.vibeEnabled=e.target.checked; saveSettings();});
-        document.getElementById('volume').addEventListener('input', (e)=>{settings.volume=parseInt(e.target.value,10); saveSettings(); applyAudioSettings();});
-        document.body.addEventListener('click', ()=>{ if(settings.musicEnabled) audio.play().catch(()=>{}); }, { once:true });
-        initConfig().then(()=>applyAudioSettings());
-        build();sync();tg.expand();
+        build(); sync(); tg.expand();
     </script>
 </body></html>`);
 });
-app.listen(PORT,()=>console.log("SERVER START"));
+app.listen(PORT,()=>console.log("🚀 Server OK"));
