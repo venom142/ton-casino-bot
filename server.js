@@ -86,18 +86,6 @@ if (process.env.BOT_TOKEN) {
         if (q.data === "adm_mail") { adminSession[q.from.id] = { step: 'mail' }; bot.sendMessage(q.message.chat.id, "Текст рассылки:"); }
         if (q.data === "adm_promo") { adminSession[q.from.id] = { step: 'p_code' }; bot.sendMessage(q.message.chat.id, "Код:"); }
         if (q.data === "adm_balance") { adminSession[q.from.id] = { step: 'b_uid' }; bot.sendMessage(q.message.chat.id, "ID пользователя:"); }
-        if (q.data === "adm_game") {
-            bot.sendMessage(q.message.chat.id, `🎛 *ИГРОВЫЕ НАСТРОЙКИ*\n\nШанс победы: *${(GAME_SETTINGS.winChance * 100).toFixed(1)}%*\nМножитель: *x${GAME_SETTINGS.winMultiplier}*\nМин. ставка: *${GAME_SETTINGS.minBet} TON*`, {
-                parse_mode: 'Markdown',
-                reply_markup: {
-                    inline_keyboard: [
-                        [{ text: "🎯 Изменить шанс", callback_data: "adm_set_chance" }],
-                        [{ text: "💸 Изменить множитель", callback_data: "adm_set_mult" }],
-                        [{ text: "🪙 Изменить мин. ставку", callback_data: "adm_set_minbet" }]
-                    ]
-                }
-            });
-        }
         if (q.data === "adm_set_chance") { adminSession[q.from.id] = { step: 'g_chance' }; bot.sendMessage(q.message.chat.id, "Новый шанс в % (например 12):"); }
         if (q.data === "adm_set_mult") { adminSession[q.from.id] = { step: 'g_multi' }; bot.sendMessage(q.message.chat.id, "Новый множитель (например 10):"); }
         if (q.data === "adm_set_minbet") { adminSession[q.from.id] = { step: 'g_minbet' }; bot.sendMessage(q.message.chat.id, "Новая мин. ставка TON (например 0.05):"); }
