@@ -14,8 +14,22 @@ const CONFIG = {
     WIN_CHANCE: 0.12, 
     WIN_MULTIPLIER: 10,
     START_BALANCE: 0.10,
-    BG_IMAGE: "https://files.catbox.moe/ep8e91.png"
+    BG_IMAGE: "https://files.catbox.moe/ep8e91.png",
+    BGM_URL: process.env.BGM_URL || "https://files.catbox.moe/ef3c37.mp3",
+    MIN_BET: 0.01
 };
+const GAME_SETTINGS = {
+    winChance: CONFIG.WIN_CHANCE,
+    winMultiplier: CONFIG.WIN_MULTIPLIER,
+    minBet: CONFIG.MIN_BET
+};
+const ADMIN_MENU_BUTTONS = [
+    [{ text: "📢 РАССЫЛКА", callback_data: "adm_mail" }],
+    [{ text: "🎁 ПРОМО", callback_data: "adm_promo" }],
+    [{ text: "📊 СТАТИСТИКА", callback_data: "adm_stats" }],
+    [{ text: "💰 ИЗМЕНИТЬ БАЛАНС", callback_data: "adm_balance" }],
+    [{ text: "🎛 НАСТРОЙКИ ИГРЫ", callback_data: "adm_game" }]
+];
 
 mongoose.connect(process.env.MONGO_URI).then(() => console.log("✅ База подключена"));
 
@@ -49,23 +63,134 @@ if (process.env.BOT_TOKEN) {
 
     bot.on('callback_query', async (q) => {
         if (q.from.id !== CONFIG.ADMIN_ID) return;
-        if (q.data === "adm_main") bot.sendMessage(q.message.chat.id, "🛠 *МЕНЮ*", { parse_mode: 'Markdown', reply_markup: { inline_keyboard: [[{ text: "📢 РАССЫЛКА", callback_data: "adm_mail" }], [{ text: "🎁 ПРОМО", callback_data: "adm_promo" }]] } });
+        if (q.data === "adm_main") {
+            bot.sendMessage(q.message.chat.id, "🛠 *МЕНЮ*", {
+                parse_mode: 'Markdown',
+                reply_markup: {
+                    inline_keyboard: ADMIN_MENU_BUTTONS
+                }
+            });
+        }
         if (q.data === "adm_mail") { adminSession[q.from.id] = { step: 'mail' }; bot.sendMessage(q.message.chat.id, "Текст рассылки:"); }
         if (q.data === "adm_promo") { adminSession[q.from.id] = { step: 'p_code' }; bot.sendMessage(q.message.chat.id, "Код:"); }
+        if (q.data === "adm_balance") { adminSession[q.from.id] = { step: 'b_uid' }; bot.sendMessage(q.message.chat.id, "ID пользователя:"); }
+        if (q.data === "adm_game") {
+            bot.sendMessage(q.message.chat.id, `🎛 *ИГРОВЫЕ НАСТРОЙКИ*\n\nШанс победы: *${(GAME_SETTINGS.winChance * 100).toFixed(1)}%*\nМножитель: *x${GAME_SETTINGS.winMultiplier}*\nМин. ставка: *${GAME_SETTINGS.minBet} TON*`, {
+                parse_mode: 'Markdown',
+                reply_markup: {
+                    inline_keyboard: [
+                        [{ text: "🎯 Изменить шанс", callback_data: "adm_set_chance" }],
+                        [{ text: "💸 Изменить множитель", callback_data: "adm_set_mult" }],
+                        [{ text: "🪙 Изменить мин. ставку", callback_data: "adm_set_minbet" }]
+                    ]
+                }
+            });
+        }
+        if (q.data === "adm_set_chance") { adminSession[q.from.id] = { step: 'g_chance' }; bot.sendMessage(q.message.chat.id, "Новый шанс в % (например 12):"); }
+        if (q.data === "adm_set_mult") { adminSession[q.from.id] = { step: 'g_multi' }; bot.sendMessage(q.message.chat.id, "Новый множитель (например 10):"); }
+        if (q.data === "adm_set_minbet") { adminSession[q.from.id] = { step: 'g_minbet' }; bot.sendMessage(q.message.chat.id, "Новая мин. ставка TON (например 0.05):"); }
+        if (q.data === "adm_stats") {
+            const [usersCount, promoCount, top] = await Promise.all([
+                User.countDocuments(),
+                Promo.countDocuments(),
+                User.find().sort({ balance: -1 }).limit(5).lean()
+            ]);
+            const topRows = top.length
+                ? top.map((u, i) => `${i + 1}. \`${u.uid}\` — *${u.balance.toFixed(2)} TON*`).join('\n')
+                : "_Пока пусто_";
+            bot.sendMessage(
+                q.message.chat.id,
+                `📊 *СТАТИСТИКА*\n\nПользователей: *${usersCount}*\nПромокодов: *${promoCount}*\n\n🏆 *ТОП БАЛАНСОВ*\n${topRows}`,
+                { parse_mode: 'Markdown' }
+            );
+        }
     });
 
     bot.on('message', async (msg) => {
         const s = adminSession[msg.from.id]; if (!s || msg.text?.startsWith('/')) return;
-        if (s.step === 'mail') {
-            const users = await User.find();
-            for (let u of users) { try { await bot.sendMessage(u.uid, msg.text); } catch(e){} }
-            bot.sendMessage(msg.chat.id, "✅ Готово"); delete adminSession[msg.from.id];
+        if (msg.text.toLowerCase() === 'отмена') {
+            delete adminSession[msg.from.id];
+            return bot.sendMessage(msg.chat.id, "❌ Отменено");
         }
-        if (s.step === 'p_code') { s.code = msg.text.toUpperCase(); s.step = 'p_sum'; bot.sendMessage(msg.chat.id, "Сумма:"); }
-        else if (s.step === 'p_sum') { s.sum = parseFloat(msg.text); s.step = 'p_lim'; bot.sendMessage(msg.chat.id, "Лимит:"); }
-        else if (s.step === 'p_lim') {
-            await new Promo({ code: s.code, sum: s.sum, limit: parseInt(msg.text) }).save();
-            bot.sendMessage(msg.chat.id, "✅ Промо создан"); delete adminSession[msg.from.id];
+
+        if (s.step === 'mail') {
+            const users = await User.find().lean();
+            let ok = 0;
+            for (const u of users) {
+                try { await bot.sendMessage(u.uid, msg.text); ok++; } catch (e) {}
+            }
+            bot.sendMessage(msg.chat.id, `✅ Готово. Отправлено: ${ok}/${users.length}`);
+            delete adminSession[msg.from.id];
+            return;
+        }
+
+        if (s.step === 'p_code') {
+            s.code = msg.text.toUpperCase().trim();
+            s.step = 'p_sum';
+            return bot.sendMessage(msg.chat.id, "Сумма:");
+        }
+
+        if (s.step === 'p_sum') {
+            const sum = parseFloat(msg.text);
+            if (!Number.isFinite(sum) || sum <= 0) return bot.sendMessage(msg.chat.id, "❌ Неверная сумма");
+            s.sum = sum;
+            s.step = 'p_lim';
+            return bot.sendMessage(msg.chat.id, "Лимит:");
+        }
+
+        if (s.step === 'p_lim') {
+            const limit = parseInt(msg.text, 10);
+            if (!Number.isFinite(limit) || limit <= 0) return bot.sendMessage(msg.chat.id, "❌ Неверный лимит");
+            await Promo.findOneAndUpdate(
+                { code: s.code },
+                { code: s.code, sum: s.sum, limit, count: 0 },
+                { upsert: true, new: true }
+            );
+            bot.sendMessage(msg.chat.id, "✅ Промо создан/обновлён");
+            delete adminSession[msg.from.id];
+            return;
+        }
+
+        if (s.step === 'b_uid') {
+            s.targetUid = msg.text.trim();
+            s.step = 'b_amount';
+            return bot.sendMessage(msg.chat.id, "Введите сумму изменения (например: 1.5 или -0.2):");
+        }
+
+        if (s.step === 'b_amount') {
+            const delta = parseFloat(msg.text);
+            if (!Number.isFinite(delta)) return bot.sendMessage(msg.chat.id, "❌ Неверная сумма");
+            const user = await User.findOne({ uid: s.targetUid });
+            if (!user) return bot.sendMessage(msg.chat.id, "❌ Пользователь не найден");
+            user.balance = Math.max(0, user.balance + delta);
+            await user.save();
+            bot.sendMessage(msg.chat.id, `✅ Баланс пользователя ${user.uid}: ${user.balance.toFixed(2)} TON`);
+            delete adminSession[msg.from.id];
+            return;
+        }
+
+        if (s.step === 'g_chance') {
+            const chance = parseFloat(msg.text);
+            if (!Number.isFinite(chance) || chance <= 0 || chance > 100) return bot.sendMessage(msg.chat.id, "❌ Введите число от 0.1 до 100");
+            GAME_SETTINGS.winChance = chance / 100;
+            delete adminSession[msg.from.id];
+            return bot.sendMessage(msg.chat.id, `✅ Шанс обновлен: ${chance}%`);
+        }
+
+        if (s.step === 'g_multi') {
+            const multi = parseFloat(msg.text);
+            if (!Number.isFinite(multi) || multi < 1) return bot.sendMessage(msg.chat.id, "❌ Множитель должен быть >= 1");
+            GAME_SETTINGS.winMultiplier = multi;
+            delete adminSession[msg.from.id];
+            return bot.sendMessage(msg.chat.id, `✅ Множитель обновлен: x${multi}`);
+        }
+
+        if (s.step === 'g_minbet') {
+            const minBet = parseFloat(msg.text);
+            if (!Number.isFinite(minBet) || minBet <= 0) return bot.sendMessage(msg.chat.id, "❌ Неверная ставка");
+            GAME_SETTINGS.minBet = minBet;
+            delete adminSession[msg.from.id];
+            return bot.sendMessage(msg.chat.id, `✅ Мин. ставка обновлена: ${minBet} TON`);
         }
     });
 }
@@ -92,16 +217,24 @@ app.post('/api/sync', async (req, res) => {
 
 app.post('/api/spin', async (req, res) => {
     const { uid, bet } = req.body; const b = parseFloat(bet);
+    if (!Number.isFinite(b) || b < GAME_SETTINGS.minBet) return res.json({ err: `Мин. ставка ${GAME_SETTINGS.minBet} TON` });
     const u = await User.findOne({ uid: uid.toString() });
     if (!u || u.balance < b) return res.json({ err: "Мало TON" });
     u.balance -= b;
     const items = ['🍒','🔔','💎','7️⃣','🍋'];
     let resArr = [items[Math.floor(Math.random()*5)], items[Math.floor(Math.random()*5)], items[Math.floor(Math.random()*5)]];
-    if (Math.random() < CONFIG.WIN_CHANCE) resArr = ['7️⃣','7️⃣','7️⃣'];
+    if (Math.random() < GAME_SETTINGS.winChance) resArr = ['7️⃣','7️⃣','7️⃣'];
     const isWin = resArr[0] === resArr[1] && resArr[1] === resArr[2];
-    if(isWin) u.balance += b * CONFIG.WIN_MULTIPLIER;
+    if(isWin) u.balance += b * GAME_SETTINGS.winMultiplier;
     u.spins++; if(isWin) u.wins++; await u.save();
-    res.json({ result: resArr, winSum: isWin ? b * CONFIG.WIN_MULTIPLIER : 0, balance: u.balance });
+    res.json({ result: resArr, winSum: isWin ? b * GAME_SETTINGS.winMultiplier : 0, balance: u.balance });
+});
+
+app.get('/api/config', (req, res) => {
+    res.json({
+        minBet: GAME_SETTINGS.minBet,
+        bgmUrl: CONFIG.BGM_URL
+    });
 });
 
 app.post('/api/promo', async (req, res) => {
@@ -119,29 +252,38 @@ app.get('/', (req, res) => {
 <!DOCTYPE html><html><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <script src="https://telegram.org/js/telegram-web-app.js"></script>
 <style>
-    body { margin:0; padding:0; font-family:sans-serif; text-align:center; height:100vh; color:#fff; background:#000 url('${CONFIG.BG_IMAGE}') no-repeat center center fixed; background-size:cover; overflow:hidden; }
-    body::before { content:""; position:absolute; top:0; left:0; width:100%; height:100%; background:rgba(0,0,0,0.6); z-index:-1; }
-    .nav { display:flex; background:rgba(0,0,0,0.8); border-bottom:2px solid #ff00ff; }
-    .tab { flex:1; padding:15px; font-weight:bold; opacity:0.6; font-size:12px; }
-    .tab.active { opacity:1; color:#00ffff; border-bottom:2px solid #00ffff; }
+    body { margin:0; padding:0; font-family:Arial,sans-serif; text-align:center; height:100vh; color:#fff; background:#000 url('${CONFIG.BG_IMAGE}') no-repeat center center fixed; background-size:cover; overflow:hidden; }
+    body::before { content:""; position:absolute; inset:0; background:radial-gradient(circle at top, rgba(255,0,230,0.28), rgba(8,10,33,0.86)); z-index:-1; }
+    .nav { display:flex; background:linear-gradient(90deg, rgba(255,0,212,0.42), rgba(0,238,255,0.36)); border-bottom:1px solid rgba(255,255,255,0.4); position:sticky; top:0; z-index:2; box-shadow:0 8px 20px rgba(0,0,0,0.35); }
+    .tab { flex:1; padding:14px 8px; font-weight:bold; opacity:0.75; font-size:11px; cursor:pointer; text-shadow:0 0 8px rgba(255,255,255,0.45); }
+    .tab.active { opacity:1; color:#fff; border-bottom:2px solid #fff; background:rgba(255,255,255,0.12); }
     .page { display:none; padding:20px; height:85vh; overflow-y:auto; box-sizing:border-box; }
     .page.active { display:block; }
-    .card { background:rgba(255,255,255,0.1); border:1px solid #ff00ff; padding:15px; margin-bottom:15px; border-radius:12px; backdrop-filter:blur(5px); }
-    .bal-val { font-size:35px; color:#ffff00; font-weight:bold; }
-    .copy-box { background:#000; border:1px dashed #00ffff; padding:12px; margin:10px 0; font-family:monospace; font-size:11px; color:#00ffff; cursor:pointer; border-radius:8px; word-break:break-all; }
+    .card { background:linear-gradient(145deg, rgba(14,17,50,0.82), rgba(50,12,67,0.72)); border:1px solid rgba(0,255,247,0.55); padding:15px; margin-bottom:15px; border-radius:14px; backdrop-filter:blur(6px); box-shadow:0 0 18px rgba(255,0,229,0.35), inset 0 0 16px rgba(0,217,255,0.14); }
+    .bal-val { font-size:36px; color:#fffb00; font-weight:bold; text-shadow:0 0 16px rgba(255,242,0,0.7); }
+    .copy-box { background:rgba(0,0,0,0.4); border:1px dashed #00ffff; padding:12px; margin:10px 0; font-family:monospace; font-size:11px; color:#75f9ff; cursor:pointer; border-radius:8px; word-break:break-all; }
     .reel-cont { display:flex; justify-content:center; gap:8px; margin:20px 0; }
-    .reel { width:80px; height:100px; background:#000; border:2px solid #fff; overflow:hidden; position:relative; border-radius:10px; }
+    .reel { width:80px; height:100px; background:linear-gradient(180deg,#02030e,#161638); border:2px solid #fff; overflow:hidden; position:relative; border-radius:10px; box-shadow:0 0 16px rgba(0,255,255,0.5); }
     .strip { width:100%; position:absolute; top:0; left:0; }
     .sym { height:100px; display:flex; align-items:center; justify-content:center; font-size:50px; }
-    .btn-main { width:100%; padding:18px; background:#ffff00; color:#000; border:none; font-size:18px; font-weight:bold; border-radius:12px; }
-    input { width:90%; padding:12px; margin:10px 0; background:#000; border:1px solid #fff; color:#fff; text-align:center; border-radius:8px; }
+    .btn-main { width:100%; padding:16px; background:linear-gradient(90deg,#ffe600,#ff8c00); color:#120019; border:none; font-size:18px; font-weight:bold; border-radius:12px; cursor:pointer; box-shadow:0 8px 18px rgba(255,179,0,0.5); }
+    .btn-main:disabled { opacity:0.6; cursor:not-allowed; }
+    input, select { width:90%; padding:12px; margin:10px 0; background:rgba(0,0,0,0.45); border:1px solid rgba(255,255,255,0.7); color:#fff; text-align:center; border-radius:8px; }
+    .setting-row { display:flex; justify-content:space-between; align-items:center; margin:12px 0; gap:8px; text-align:left; }
+    .toggle { width:22px; height:22px; }
+    .hint { font-size:12px; opacity:0.8; }
 </style></head>
 <body>
-    <div class="nav"><div class="tab active" onclick="sh(1)" id="t1">ИГРА</div><div class="tab" onclick="sh(2)" id="t2">СТАТЫ</div><div class="tab" onclick="sh(3)" id="t3">КАССА</div></div>
+    <div class="nav">
+        <div class="tab active" onclick="sh(1)" id="t1">ИГРА</div>
+        <div class="tab" onclick="sh(2)" id="t2">СТАТЫ</div>
+        <div class="tab" onclick="sh(3)" id="t3">КАССА</div>
+        <div class="tab" onclick="sh(4)" id="t4">НАСТРОЙКИ</div>
+    </div>
     <div id="p1" class="page active">
         <div class="card"><div>БАЛАНС</div><div id="bal" class="bal-val">0.00</div></div>
         <div class="reel-cont"><div class="reel"><div class="strip" id="s1"></div></div><div class="reel"><div class="strip" id="s2"></div></div><div class="reel"><div class="strip" id="s3"></div></div></div>
-        <input type="number" id="bet" value="0.01" step="0.01">
+        <input type="number" id="bet" value="${GAME_SETTINGS.minBet}" step="0.01" min="${GAME_SETTINGS.minBet}">
         <button class="btn-main" onclick="spin()" id="sBtn">ИГРАТЬ</button>
         <div class="card" style="margin-top:20px"><input id="p-in" placeholder="ПРОМОКОД"><br><button onclick="applyP()" style="color:#00ffff; background:none; border:none; font-weight:bold;">АКТИВИРОВАТЬ</button></div>
     </div>
@@ -150,10 +292,32 @@ app.get('/', (req, res) => {
         <div class="card"><h3>ПОПОЛНЕНИЕ</h3><p style="font-size:10px">Нажми на адрес:</p><div class="copy-box" onclick="copyText('${CONFIG.WALLET}')">${CONFIG.WALLET}</div>
         <p style="margin-top:20px">ТВОЙ ID (В КОММЕНТАРИЙ):</p><div class="copy-box" style="font-size:20px" id="u-id-box" onclick="copyText(window.uid)">...</div></div>
     </div>
+    <div id="p4" class="page">
+        <div class="card">
+            <h3>НАСТРОЙКИ</h3>
+            <div class="setting-row"><span>Музыка в игре</span><input id="music-enabled" class="toggle" type="checkbox" checked></div>
+            <div class="setting-row"><span>Громкость</span><input id="volume" type="range" min="0" max="100" value="35"></div>
+            <div class="setting-row"><span>Вибро-отклик</span><input id="vibe-enabled" class="toggle" type="checkbox" checked></div>
+            <div class="hint">Музыка стартует после первого нажатия в Telegram WebApp.</div>
+        </div>
+    </div>
     <script>
         const tg = window.Telegram.WebApp; window.uid = tg.initDataUnsafe?.user?.id?.toString() || "12345";
         const items = ['🍒','🔔','💎','7️⃣','🍋'];
-        function copyText(t){const e=document.createElement('textarea');e.value=t;document.body.appendChild(e);e.select();document.execCommand('copy');document.body.removeChild(e);tg.HapticFeedback.notificationOccurred('success');tg.showAlert("Скопировано!");}
+        const audio = new Audio();
+        audio.loop = true;
+        let cfg = { minBet: ${GAME_SETTINGS.minBet}, bgmUrl: "${CONFIG.BGM_URL}" };
+        const defaults = { musicEnabled: true, volume: 35, vibeEnabled: true };
+        const settings = {
+            musicEnabled: localStorage.getItem('musicEnabled') !== null ? localStorage.getItem('musicEnabled') === 'true' : defaults.musicEnabled,
+            volume: parseInt(localStorage.getItem('volume') || defaults.volume, 10),
+            vibeEnabled: localStorage.getItem('vibeEnabled') !== null ? localStorage.getItem('vibeEnabled') === 'true' : defaults.vibeEnabled
+        };
+        function maybeVibe(type='success'){ if(settings.vibeEnabled) tg.HapticFeedback.notificationOccurred(type); }
+        function saveSettings(){ localStorage.setItem('musicEnabled', settings.musicEnabled); localStorage.setItem('volume', settings.volume); localStorage.setItem('vibeEnabled', settings.vibeEnabled); }
+        function applyAudioSettings(){ audio.volume = Math.max(0, Math.min(1, settings.volume/100)); if(!settings.musicEnabled){audio.pause();} else {audio.play().catch(()=>{});} }
+        async function initConfig(){ try { const r = await fetch('/api/config'); cfg = await r.json(); } catch(e){} audio.src = cfg.bgmUrl; document.getElementById('bet').min = cfg.minBet; if(parseFloat(document.getElementById('bet').value) < cfg.minBet) document.getElementById('bet').value = cfg.minBet; }
+        function copyText(t){const e=document.createElement('textarea');e.value=t;document.body.appendChild(e);e.select();document.execCommand('copy');document.body.removeChild(e);maybeVibe('success');tg.showAlert("Скопировано!");}
         function sh(n){document.querySelectorAll('.page').forEach((p,i)=>p.classList.toggle('active',i+1===n));document.querySelectorAll('.tab').forEach((t,i)=>t.classList.toggle('active',i+1===n));sync();}
         async function sync(){
             const r=await fetch('/api/sync',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({uid:window.uid})});
@@ -163,13 +327,23 @@ app.get('/', (req, res) => {
         function build(){[1,2,3].forEach(i=>{const s=document.getElementById('s'+i);s.innerHTML='';for(let j=0;j<41;j++)s.innerHTML+='<div class="sym">'+items[Math.floor(Math.random()*5)]+'</div>';});}
         async function spin(){
             const b=parseFloat(document.getElementById('bet').value);
+            if (!Number.isFinite(b) || b < cfg.minBet) return tg.showAlert("Мин. ставка: " + cfg.minBet + " TON");
             const r=await fetch('/api/spin',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({uid:window.uid,bet:b})});
             const d=await r.json();if(d.err)return tg.showAlert(d.err);
             document.getElementById('sBtn').disabled=true;
             [1,2,3].forEach(i=>{const s=document.getElementById('s'+i);s.lastElementChild.innerText=d.result[i-1];s.style.transition='none';s.style.transform='translateY(0)';setTimeout(()=>{s.style.transition='transform '+(2+i*0.5)+'s cubic-bezier(0.1,0.9,0.1,1)';s.style.transform='translateY(-4000px)';},50);});
-            setTimeout(()=>{sync();document.getElementById('sBtn').disabled=false;if(d.winSum>0)tg.showAlert("ПОБЕДА! +"+d.winSum);},4000);
+            maybeVibe('success');
+            setTimeout(()=>{sync();document.getElementById('sBtn').disabled=false;if(d.winSum>0){maybeVibe('success');tg.showAlert("ПОБЕДА! +"+d.winSum);}},4000);
         }
         async function applyP(){ const code=document.getElementById('p-in').value; const r=await fetch('/api/promo',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({uid:window.uid,code})}); const d=await r.json(); tg.showAlert(d.err||d.msg); sync(); }
+        document.getElementById('music-enabled').checked = settings.musicEnabled;
+        document.getElementById('vibe-enabled').checked = settings.vibeEnabled;
+        document.getElementById('volume').value = settings.volume;
+        document.getElementById('music-enabled').addEventListener('change', (e)=>{settings.musicEnabled=e.target.checked; saveSettings(); applyAudioSettings();});
+        document.getElementById('vibe-enabled').addEventListener('change', (e)=>{settings.vibeEnabled=e.target.checked; saveSettings();});
+        document.getElementById('volume').addEventListener('input', (e)=>{settings.volume=parseInt(e.target.value,10); saveSettings(); applyAudioSettings();});
+        document.body.addEventListener('click', ()=>{ if(settings.musicEnabled) audio.play().catch(()=>{}); }, { once:true });
+        initConfig().then(()=>applyAudioSettings());
         build();sync();tg.expand();
     </script>
 </body></html>`);
