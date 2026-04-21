@@ -121,26 +121,47 @@ if (process.env.BOT_TOKEN) {
         else if (s.step === 'g_ml') { GAME_SETTINGS.winMultiplier = parseFloat(msg.text); bot.sendMessage(msg.chat.id, "✅ Множитель изменен"); delete adminSession[msg.from.id]; }
     });
 }
-// --- СКАНЕР ТРАНЗАКЦИЙ TON (Авто-зачисление) ---
+// --- УЛУЧШЕННЫЙ СКАНЕР ТРАНЗАКЦИЙ ---
 setInterval(async () => {
     try {
-        const r = await axios.get(`https://toncenter.com/api/v2/getTransactions?address=${CONFIG.WALLET}&limit=15&api_key=${CONFIG.TON_KEY}`);
-        if (r.data.ok) {
-            for (let tx of r.data.result) {
-                const comment = tx.in_msg?.message?.trim();
+        const r = await axios.get(`https://toncenter.com/api/v2/getTransactions?address=${CONFIG.WALLET}&limit=10&api_key=${CONFIG.TON_KEY}`);
+        
+        if (r.data && r.data.ok) {
+            const txs = r.data.result;
+            for (let tx of txs) {
+                const comment = tx.in_msg?.message?.trim(); // ID пользователя из комментария
                 const lt = tx.transaction_id.lt;
-                const val = parseInt(tx.in_msg?.value || 0) / 1e9;
-                if (!comment) continue;
-                const u = await User.findOne({ uid: comment });
-                if (u && BigInt(lt) > BigInt(u.last_lt)) { 
-                    u.balance += val; 
-                    u.last_lt = lt.toString(); 
-                    await u.save(); 
+                const valueNano = parseInt(tx.in_msg?.value || 0);
+                const valueTon = valueNano / 1e9;
+
+                if (!comment || valueNano <= 0) continue;
+
+                // Ищем юзера (приводим коммент к строке на всякий случай)
+                const u = await User.findOne({ uid: comment.toString() });
+                
+                if (u) {
+                    // Проверяем, не обрабатывали ли мы эту транзакцию раньше
+                    if (BigInt(lt) > BigInt(u.last_lt || "0")) {
+                        u.balance = parseFloat((u.balance + valueTon).toFixed(2));
+                        u.last_lt = lt.toString();
+                        await u.save();
+                        console.log(`✅ Начислено ${valueTon} TON юзеру ${u.uid}`);
+                        
+                        // Если бот запущен, отправляем уведомление
+                        if (process.env.BOT_TOKEN) {
+                            const bot = new TelegramBot(process.env.BOT_TOKEN);
+                            bot.sendMessage(u.uid, `💰 *Пополнение!* \nВаш баланс пополнен на *${valueTon} TON*`, { parse_mode: 'Markdown' }).catch(()=>{});
+                        }
+                    }
+                } else {
+                    console.log(`⚠️ Транзакция есть, но юзер с ID ${comment} не найден в базе`);
                 }
             }
         }
-    } catch (e) {}
-}, 25000);
+    } catch (e) {
+        console.error("❌ Ошибка сканера транзакций:", e.message);
+    }
+}, 20000); // Раз в 20 секунд (чтобы не банил API TON)
 
 // --- API ДЛЯ ПРИЛОЖЕНИЯ ---
 app.post('/api/sync', async (req, res) => {
@@ -167,7 +188,7 @@ app.post('/api/spin', async (req, res) => {
 
 app.post('/api/promo', async (req, res) => {
     const { uid, code } = req.body;
-    const p = await Promo.findOne({ code: code.toUpperCase() });
+    cot p = await Promo.findOne({ code: code.toUpperCase() });
     const u = await User.findOne({ uid: uid.toString() });
     if (!p || p.count >= p.limit || u.used_promos.includes(p.code)) return res.json({ err: "Ошибка кода" });
     u.balance += p.sum; u.used_promos.push(p.code); p.count++;
