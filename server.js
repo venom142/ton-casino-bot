@@ -9,7 +9,7 @@ const PORT = process.env.PORT || 10000;
 
 const CONFIG = {
     ADMIN_ID: 8475323865, 
-    WALLET: "UQCy28DFTxwwmULQWw_53PvzuwZqj0spCe1vrUgYQtAvGfvn",
+    WALLET: "UQDoTj0hCwJbI-9fziRCyUZzO2XHmtcDzuiAiGjxG21G3dIX",
     TON_KEY: "fe9429836fd2dfdb009421c6dc389840c9cdadca238477b4e2910250e11fa6d3",
     WIN_CHANCE: 0.12, 
     WIN_MULTIPLIER: 10,
@@ -22,6 +22,8 @@ const GAME_SETTINGS = {
     winChance: CONFIG.WIN_CHANCE,
     winMultiplier: CONFIG.WIN_MULTIPLIER,
     minBet: CONFIG.MIN_BET
+    BGM_URL: "https://files.catbox.moe/78surr.mp3",
+    MIN_BET: 0.01
 };
 
 mongoose.connect(process.env.MONGO_URI).then(() => console.log("✅ База подключена"));
@@ -42,6 +44,81 @@ const Promo = mongoose.model('Promo', {
 
 app.use(express.json());
 const adminSession = {};
+async function processBalanceStep(step, msg, session, bot) {
+    if (step === 'b_uid') {
+        session.targetUid = msg.text.trim();
+        session.step = 'b_amount';
+        await bot.sendMessage(msg.chat.id, "Введите сумму изменения (например: 1.5 или -0.2):");
+        return true;
+    }
+
+    if (step === 'b_amount') {
+        const delta = parseFloat(msg.text);
+        if (!Number.isFinite(delta)) {
+            await bot.sendMessage(msg.chat.id, "❌ Неверная сумма");
+            return true;
+        }
+        const user = await User.findOne({ uid: session.targetUid });
+        if (!user) {
+            await bot.sendMessage(msg.chat.id, "❌ Пользователь не найден");
+            return true;
+        }
+        user.balance = Math.max(0, user.balance + delta);
+        await user.save();
+        await bot.sendMessage(msg.chat.id, `✅ Баланс пользователя ${user.uid}: ${user.balance.toFixed(2)} TON`);
+        delete adminSession[msg.from.id];
+        return true;
+    }
+    return false;
+}
+async function processPromoStep(step, msg, session, bot) {
+    if (step === 'p_code') {
+        session.code = msg.text.toUpperCase().trim();
+        session.step = 'p_sum';
+        await bot.sendMessage(msg.chat.id, "Сумма:");
+        return true;
+    }
+
+    if (step === 'p_sum') {
+        const sum = parseFloat(msg.text);
+        if (!Number.isFinite(sum) || sum <= 0) {
+            await bot.sendMessage(msg.chat.id, "❌ Неверная сумма");
+            return true;
+        }
+        session.sum = sum;
+        session.step = 'p_lim';
+        await bot.sendMessage(msg.chat.id, "Лимит:");
+        return true;
+    }
+
+    if (step === 'p_lim') {
+        const limit = parseInt(msg.text, 10);
+        if (!Number.isFinite(limit) || limit <= 0) {
+            await bot.sendMessage(msg.chat.id, "❌ Неверный лимит");
+            return true;
+        }
+        await Promo.findOneAndUpdate(
+            { code: session.code },
+            { code: session.code, sum: session.sum, limit, count: 0 },
+            { upsert: true, new: true }
+        );
+        await bot.sendMessage(msg.chat.id, "✅ Промо создан/обновлён");
+        delete adminSession[msg.from.id];
+        return true;
+    }
+    return false;
+}
+async function processMailStep(step, msg, bot) {
+    if (step !== 'mail') return false;
+    const users = await User.find().lean();
+    let ok = 0;
+    for (const u of users) {
+        try { await bot.sendMessage(u.uid, msg.text); ok++; } catch (e) {}
+    }
+    await bot.sendMessage(msg.chat.id, `✅ Готово. Отправлено: ${ok}/${users.length}`);
+    delete adminSession[msg.from.id];
+    return true;
+}
 
 // БОТ И АДМИНКА
 if (process.env.BOT_TOKEN) {
@@ -53,7 +130,6 @@ if (process.env.BOT_TOKEN) {
         if (msg.from.id === CONFIG.ADMIN_ID) kb.push([{ text: "🛠 АДМИНКА", callback_data: "adm_main" }]);
         bot.sendMessage(msg.chat.id, `🎰 *TON CASINO*\n\nID: \`${uid}\``, { parse_mode: 'Markdown', reply_markup: { inline_keyboard: kb } });
     });
-
     bot.on('callback_query', async (q) => {
         if (q.from.id !== CONFIG.ADMIN_ID) return;
         if (q.data === "adm_main") {
@@ -66,6 +142,7 @@ if (process.env.BOT_TOKEN) {
                         [{ text: "📊 СТАТИСТИКА", callback_data: "adm_stats" }],
                         [{ text: "💰 ИЗМЕНИТЬ БАЛАНС", callback_data: "adm_balance" }],
                         [{ text: "🎛 НАСТРОЙКИ ИГРЫ", callback_data: "adm_game" }]
+                        [{ text: "💰 ИЗМЕНИТЬ БАЛАНС", callback_data: "adm_balance" }]
                     ]
                 }
             });
@@ -112,6 +189,8 @@ if (process.env.BOT_TOKEN) {
             return bot.sendMessage(msg.chat.id, "❌ Отменено");
         }
 
+        }
+
         if (s.step === 'mail') {
             const users = await User.find().lean();
             let ok = 0;
@@ -121,6 +200,41 @@ if (process.env.BOT_TOKEN) {
             bot.sendMessage(msg.chat.id, `✅ Готово. Отправлено: ${ok}/${users.length}`);
             delete adminSession[msg.from.id];
             return;
+        }
+
+        if (s.step === 'p_code') {
+            s.code = msg.text.toUpperCase().trim();
+            s.step = 'p_sum';
+            return bot.sendMessage(msg.chat.id, "Сумма:");
+        }
+
+        if (s.step === 'p_sum') {
+            const sum = parseFloat(msg.text);
+            if (!Number.isFinite(sum) || sum <= 0) return bot.sendMessage(msg.chat.id, "❌ Неверная сумма");
+            s.sum = sum;
+            s.step = 'p_lim';
+            return bot.sendMessage(msg.chat.id, "Лимит:");
+        }
+
+        if (s.step === 'p_lim') {
+            const limit = parseInt(msg.text, 10);
+            if (!Number.isFinite(limit) || limit <= 0) return bot.sendMessage(msg.chat.id, "❌ Неверный лимит");
+            await Promo.findOneAndUpdate(
+                { code: s.code },
+                { code: s.code, sum: s.sum, limit, count: 0 },
+                { upsert: true, new: true }
+            );
+            bot.sendMessage(msg.chat.id, "✅ Промо создан/обновлён");
+            delete adminSession[msg.from.id];
+            return;
+        }
+
+        if (s.step === 'b_uid') {
+            s.targetUid = msg.text.trim();
+            s.step = 'b_amount';
+            return bot.sendMessage(msg.chat.id, "Введите сумму изменения (например: 1.5 или -0.2):");
+        }
+
         }
 
         if (s.step === 'p_code') {
@@ -191,6 +305,10 @@ if (process.env.BOT_TOKEN) {
             delete adminSession[msg.from.id];
             return bot.sendMessage(msg.chat.id, `✅ Мин. ставка обновлена: ${minBet} TON`);
         }
+
+        if (await processMailStep(s.step, msg, bot)) return;
+        if (await processPromoStep(s.step, msg, s, bot)) return;
+        if (await processBalanceStep(s.step, msg, s, bot)) return;
     });
 }
 
@@ -217,6 +335,7 @@ app.post('/api/sync', async (req, res) => {
 app.post('/api/spin', async (req, res) => {
     const { uid, bet } = req.body; const b = parseFloat(bet);
     if (!Number.isFinite(b) || b < GAME_SETTINGS.minBet) return res.json({ err: `Мин. ставка ${GAME_SETTINGS.minBet} TON` });
+    if (!Number.isFinite(b) || b < CONFIG.MIN_BET) return res.json({ err: `Мин. ставка ${CONFIG.MIN_BET} TON` });
     const u = await User.findOne({ uid: uid.toString() });
     if (!u || u.balance < b) return res.json({ err: "Мало TON" });
     u.balance -= b;
@@ -232,6 +351,13 @@ app.post('/api/spin', async (req, res) => {
 app.get('/api/config', (req, res) => {
     res.json({
         minBet: GAME_SETTINGS.minBet,
+        bgmUrl: CONFIG.BGM_URL
+    });
+});
+
+app.get('/api/config', (req, res) => {
+    res.json({
+        minBet: CONFIG.MIN_BET,
         bgmUrl: CONFIG.BGM_URL
     });
 });
@@ -256,6 +382,10 @@ app.get('/', (req, res) => {
     .nav { display:flex; background:linear-gradient(90deg, rgba(255,0,212,0.42), rgba(0,238,255,0.36)); border-bottom:1px solid rgba(255,255,255,0.4); position:sticky; top:0; z-index:2; box-shadow:0 8px 20px rgba(0,0,0,0.35); }
     .tab { flex:1; padding:14px 8px; font-weight:bold; opacity:0.75; font-size:11px; cursor:pointer; text-shadow:0 0 8px rgba(255,255,255,0.45); }
     .tab.active { opacity:1; color:#fff; border-bottom:2px solid #fff; background:rgba(255,255,255,0.12); }
+    body::before { content:""; position:absolute; top:0; left:0; width:100%; height:100%; background:rgba(0,0,0,0.6); z-index:-1; }
+    .nav { display:flex; background:rgba(0,0,0,0.8); border-bottom:2px solid #ff00ff; position:sticky; top:0; z-index:2; }
+    .tab { flex:1; padding:14px 8px; font-weight:bold; opacity:0.6; font-size:11px; cursor:pointer; }
+    .tab.active { opacity:1; color:#00ffff; border-bottom:2px solid #00ffff; }
     .page { display:none; padding:20px; height:85vh; overflow-y:auto; box-sizing:border-box; }
     .page.active { display:block; }
     .card { background:linear-gradient(145deg, rgba(14,17,50,0.82), rgba(50,12,67,0.72)); border:1px solid rgba(0,255,247,0.55); padding:15px; margin-bottom:15px; border-radius:14px; backdrop-filter:blur(6px); box-shadow:0 0 18px rgba(255,0,229,0.35), inset 0 0 16px rgba(0,217,255,0.14); }
@@ -268,6 +398,9 @@ app.get('/', (req, res) => {
     .btn-main { width:100%; padding:16px; background:linear-gradient(90deg,#ffe600,#ff8c00); color:#120019; border:none; font-size:18px; font-weight:bold; border-radius:12px; cursor:pointer; box-shadow:0 8px 18px rgba(255,179,0,0.5); }
     .btn-main:disabled { opacity:0.6; cursor:not-allowed; }
     input, select { width:90%; padding:12px; margin:10px 0; background:rgba(0,0,0,0.45); border:1px solid rgba(255,255,255,0.7); color:#fff; text-align:center; border-radius:8px; }
+    .btn-main { width:100%; padding:16px; background:#ffff00; color:#000; border:none; font-size:18px; font-weight:bold; border-radius:12px; cursor:pointer; }
+    .btn-main:disabled { opacity:0.6; cursor:not-allowed; }
+    input, select { width:90%; padding:12px; margin:10px 0; background:#000; border:1px solid #fff; color:#fff; text-align:center; border-radius:8px; }
     .setting-row { display:flex; justify-content:space-between; align-items:center; margin:12px 0; gap:8px; text-align:left; }
     .toggle { width:22px; height:22px; }
     .hint { font-size:12px; opacity:0.8; }
@@ -283,6 +416,7 @@ app.get('/', (req, res) => {
         <div class="card"><div>БАЛАНС</div><div id="bal" class="bal-val">0.00</div></div>
         <div class="reel-cont"><div class="reel"><div class="strip" id="s1"></div></div><div class="reel"><div class="strip" id="s2"></div></div><div class="reel"><div class="strip" id="s3"></div></div></div>
         <input type="number" id="bet" value="${GAME_SETTINGS.minBet}" step="0.01" min="${GAME_SETTINGS.minBet}">
+        <input type="number" id="bet" value="${CONFIG.MIN_BET}" step="0.01" min="${CONFIG.MIN_BET}">
         <button class="btn-main" onclick="spin()" id="sBtn">ИГРАТЬ</button>
         <div class="card" style="margin-top:20px"><input id="p-in" placeholder="ПРОМОКОД"><br><button onclick="applyP()" style="color:#00ffff; background:none; border:none; font-weight:bold;">АКТИВИРОВАТЬ</button></div>
     </div>
@@ -306,6 +440,7 @@ app.get('/', (req, res) => {
         const audio = new Audio();
         audio.loop = true;
         let cfg = { minBet: ${GAME_SETTINGS.minBet}, bgmUrl: "${CONFIG.BGM_URL}" };
+        let cfg = { minBet: ${CONFIG.MIN_BET}, bgmUrl: "${CONFIG.BGM_URL}" };
         const defaults = { musicEnabled: true, volume: 35, vibeEnabled: true };
         const settings = {
             musicEnabled: localStorage.getItem('musicEnabled') !== null ? localStorage.getItem('musicEnabled') === 'true' : defaults.musicEnabled,
