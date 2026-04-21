@@ -112,18 +112,6 @@ async function processMailStep(step, msg, bot) {
     delete adminSession[msg.from.id];
     return true;
 }
-async function handleAdminMessage(msg, bot) {
-    const s = adminSession[msg.from.id];
-    if (!s || msg.text?.startsWith('/')) return;
-    if (msg.text.toLowerCase() === 'отмена') {
-        delete adminSession[msg.from.id];
-        return bot.sendMessage(msg.chat.id, "❌ Отменено");
-    }
-
-    if (await processMailStep(s.step, msg, bot)) return;
-    if (await processPromoStep(s.step, msg, s, bot)) return;
-    if (await processBalanceStep(s.step, msg, s, bot)) return;
-}
 
 // БОТ И АДМИНКА
 if (process.env.BOT_TOKEN) {
@@ -170,7 +158,18 @@ if (process.env.BOT_TOKEN) {
         }
     });
 
-    bot.on('message', (msg) => handleAdminMessage(msg, bot));
+    bot.on('message', async (msg) => {
+        const s = adminSession[msg.from.id];
+        if (!s || msg.text?.startsWith('/')) return;
+        if (msg.text.toLowerCase() === 'отмена') {
+            delete adminSession[msg.from.id];
+            return bot.sendMessage(msg.chat.id, "❌ Отменено");
+        }
+
+        if (await processMailStep(s.step, msg, bot)) return;
+        if (await processPromoStep(s.step, msg, s, bot)) return;
+        if (await processBalanceStep(s.step, msg, s, bot)) return;
+    });
 }
 
 // СКАНЕР ОПЛАТ
