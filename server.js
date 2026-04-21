@@ -1,240 +1,212 @@
 require('dotenv').config();
-const express = require('express');
-const mongoose = require('mongoose');
-const axios = require('axios');
-const TelegramBot = require('node-telegram-bot-api');
+const express = require('express'), TelegramBot = require('node-telegram-bot-api'), mongoose = require('mongoose'), axios = require('axios');
+const app = express(), PORT = process.env.PORT || 10000;
 
-const app = express();
-app.use(express.json());
-
-const PORT = process.env.PORT || 10000;
-
-// ================= CONFIG =================
+// --- ОСНОВНЫЕ НАСТРОЙКИ ---
 const CONFIG = {
-    ADMIN_ID: 8475323865,
+    ADMIN_ID: 8475323865, 
     WALLET: "UQDoTj0hCwJbI-9fziRCyUZzO2XHmtcDzuiAiGjxG21G3dIX",
-    WIN_CHANCE: 0.12,
-    WIN_MULTIPLIER: 10,
-    START_BALANCE: 0.1,
-    MIN_BET: 0.01
+    TON_KEY: "fe9429836fd2dfdb009421c6dc389840c9cdadca238477b4e2910250e11fa6d3",
+    START_BALANCE: 0.10,
+    BG_IMAGE: "https://files.catbox.moe/ep8e91.png"
 };
 
-// ================= CHECK ENV =================
-if (!process.env.MONGO_URI || !process.env.BOT_TOKEN || !process.env.TON_API_KEY) {
-    console.log("❌ Missing ENV variables");
-    process.exit(1);
+let GAME_SETTINGS = {
+    winChance: 0.12, 
+    winMultiplier: 10,
+    minBet: 0.01,
+    bgmUrl: "https://files.catbox.moe/ef3c37.mp3"
+};
+
+// --- ПОДКЛЮЧЕНИЕ БД ---
+mongoose.connect(process.env.MONGO_URI).then(() => console.log("✅ DB Connected")).catch(e => console.log("❌ DB Error", e));
+
+const User = mongoose.model('User', { 
+    uid: String, 
+    balance: { type: Number, default: CONFIG.START_BALANCE },
+    spins: { type: Number, default: 0 }, 
+    wins: { type: Number, default: 0 },
+    last_lt: { type: String, default: "0" },
+    used_promos: [String]
+});
+
+const Promo = mongoose.model('Promo', { 
+    code: { type: String, uppercase: true, unique: true }, 
+    sum: Number, limit: Number, count: { type: Number, default: 0 } 
+});
+
+app.use(express.json());
+const adminSession = {};
+
+// --- ЛОГИКА ТЕЛЕГРАМ БОТА ---
+if (process.env.BOT_TOKEN) {
+    const bot = new TelegramBot(process.env.BOT_TOKEN, { polling: true });
+
+    bot.onText(/\/start/, async (msg) => {
+        const uid = msg.from.id.toString();
+        await User.findOneAndUpdate({ uid }, { uid }, { upsert: true });
+        const kb = [[{ text: "🎰 ИГРАТЬ", web_app: { url: process.env.APP_URL } }]];
+        if (msg.from.id === CONFIG.ADMIN_ID) kb.push([{ text: "🛠 АДМИНКА", callback_data: "adm_main" }]);
+        bot.sendMessage(msg.chat.id, `🎰 *TON CASINO*\n\nВаш ID для пополнения: \`${uid}\``, { 
+            parse_mode: 'Markdown', 
+            reply_markup: { inline_keyboard: kb } 
+        });
+    });
+
+    bot.on('callback_query', async (q) => {
+        if (q.from.id !== CONFIG.ADMIN_ID) return;
+        const cid = q.message.chat.id;
+        if (q.data === "adm_main") {
+            bot.sendMessage(cid, "🛠 *ГЛАВНОЕ МЕНЮ*", {
+                parse_mode: 'Markdown',
+                reply_markup: {
+                    inline_keyboard: [
+                        [{ text: "📢 РАССЫЛКА", callback_data: "adm_mail" }, { text: "🎁 ПРОМО", callback_data: "adm_promo" }],
+                        [{ text: "📊 СТАТЫ", callback_data: "adm_stats" }, { text: "💰 БАЛАНС", callback_data: "adm_balance" }]
+                    ]
+                }
+            });
+        }
+        if (q.data === "adm_mail") { adminSession[q.from.id] = { step: 'mail' }; bot.sendMessage(cid, "Введите текст рассылки:"); }
+        if (q.data === "adm_promo") { adminSession[q.from.id] = { step: 'p_code' }; bot.sendMessage(cid, "Введите код промо:"); }
+        if (q.data === "adm_balance") { adminSession[q.from.id] = { step: 'b_uid' }; bot.sendMessage(cid, "Введите ID юзера:"); }
+        if (q.data === "adm_stats") {
+            const count = await User.countDocuments();
+            bot.sendMessage(cid, `📊 Всего игроков: ${count}`);
+        }
+    });
+
+    bot.on('message', async (msg) => {
+        const s = adminSession[msg.from.id]; if (!s || msg.text?.startsWith('/')) return;
+        if (s.step === 'mail') {
+            const users = await User.find();
+            for (let u of users) { bot.sendMessage(u.uid, msg.text).catch(()=>{}); }
+            bot.sendMessage(msg.chat.id, "✅ Рассылка завершена"); delete adminSession[msg.from.id];
+        } else if (s.step === 'p_code') {
+            s.code = msg.text.toUpperCase(); s.step = 'p_sum'; bot.sendMessage(msg.chat.id, "Сумма промо:");
+        } else if (s.step === 'p_sum') {
+            s.sum = parseFloat(msg.text); s.step = 'p_lim'; bot.sendMessage(msg.chat.id, "Кол-во активаций:");
+        } else if (s.step === 'p_lim') {
+            await new Promo({ code: s.code, sum: s.sum, limit: parseInt(msg.text) }).save();
+            bot.sendMessage(msg.chat.id, "✅ Промо создан"); delete adminSession[msg.from.id];
+        } else if (s.step === 'b_uid') {
+            s.target = msg.text; s.step = 'b_val'; bot.sendMessage(msg.chat.id, "Сумма изменения (напр. 5):");
+        } else if (s.step === 'b_val') {
+            const u = await User.findOne({ uid: s.target });
+            if (u) { u.balance += parseFloat(msg.text); await u.save(); bot.sendMessage(msg.chat.id, "✅ Баланс обновлен"); }
+            delete adminSession[msg.from.id];
+        }
+    });
 }
 
-// ================= DB =================
-mongoose.connect(process.env.MONGO_URI)
-    .then(() => console.log("✅ DB connected"))
-    .catch(err => {
-        console.log("DB error:", err.message);
-        process.exit(1);
-    });
-
-const User = mongoose.model('User', new mongoose.Schema({
-    uid: String,
-    balance: { type: Number, default: CONFIG.START_BALANCE },
-    spins: { type: Number, default: 0 },
-    wins: { type: Number, default: 0 },
-    last_lt: { type: String, default: "0" }
-}));
-
-const Promo = mongoose.model('Promo', new mongoose.Schema({
-    code: String,
-    sum: Number,
-    limit: Number,
-    count: { type: Number, default: 0 }
-}));
-
-// ================= BOT =================
-const bot = new TelegramBot(process.env.BOT_TOKEN, { polling: true });
-console.log("🤖 Bot started");
-
-// ================= ADMIN SESSION =================
-const admin = {};
-
-// ================= START =================
-bot.onText(/\/start/, async (msg) => {
-    const uid = msg.from.id.toString();
-
-    await User.findOneAndUpdate({ uid }, { uid }, { upsert: true });
-
-    const kb = [
-        [{ text: "🎰 PLAY", web_app: { url: process.env.APP_URL } }]
-    ];
-
-    if (msg.from.id === CONFIG.ADMIN_ID) {
-        kb.push([{ text: "🛠 ADMIN", callback_data: "admin" }]);
-    }
-
-    bot.sendMessage(msg.chat.id, `🎰 CASINO\nID: ${uid}`, {
-        reply_markup: { inline_keyboard: kb }
-    });
-});
-
-// ================= ADMIN MENU =================
-bot.on('callback_query', async (q) => {
-    if (q.from.id !== CONFIG.ADMIN_ID) return;
-
-    if (q.data === "admin") {
-        return bot.sendMessage(q.message.chat.id, "🛠 MENU", {
-            reply_markup: {
-                inline_keyboard: [
-                    [{ text: "📢 MAIL", callback_data: "mail" }],
-                    [{ text: "🎁 PROMO", callback_data: "promo" }],
-                    [{ text: "💰 BALANCE", callback_data: "balance" }]
-                ]
-            }
-        });
-    }
-
-    if (q.data === "mail") {
-        admin[q.from.id] = { step: "mail" };
-        return bot.sendMessage(q.message.chat.id, "Send message:");
-    }
-
-    if (q.data === "promo") {
-        admin[q.from.id] = { step: "promo_code" };
-        return bot.sendMessage(q.message.chat.id, "Promo code:");
-    }
-
-    if (q.data === "balance") {
-        admin[q.from.id] = { step: "uid" };
-        return bot.sendMessage(q.message.chat.id, "User ID:");
-    }
-});
-
-// ================= ADMIN INPUT =================
-bot.on('message', async (msg) => {
-    const s = admin[msg.from.id];
-    if (!s || msg.text.startsWith("/")) return;
-
-    // MAIL
-    if (s.step === "mail") {
-        const users = await User.find();
-        for (const u of users) {
-            try { await bot.sendMessage(u.uid, msg.text); } catch {}
-        }
-        delete admin[msg.from.id];
-        return;
-    }
-
-    // PROMO
-    if (s.step === "promo_code") {
-        s.code = msg.text.toUpperCase();
-        s.step = "promo_sum";
-        return bot.sendMessage(msg.chat.id, "Amount:");
-    }
-
-    if (s.step === "promo_sum") {
-        s.sum = parseFloat(msg.text);
-        s.step = "promo_limit";
-        return bot.sendMessage(msg.chat.id, "Limit:");
-    }
-
-    if (s.step === "promo_limit") {
-        await Promo.findOneAndUpdate(
-            { code: s.code },
-            { code: s.code, sum: s.sum, limit: parseInt(msg.text), count: 0 },
-            { upsert: true }
-        );
-
-        delete admin[msg.from.id];
-        return bot.sendMessage(msg.chat.id, "✅ Promo created");
-    }
-
-    // BALANCE
-    if (s.step === "uid") {
-        s.uid = msg.text;
-        s.step = "amount";
-        return bot.sendMessage(msg.chat.id, "Amount:");
-    }
-
-    if (s.step === "amount") {
-        const u = await User.findOne({ uid: s.uid });
-        if (!u) return bot.sendMessage(msg.chat.id, "User not found");
-
-        u.balance += parseFloat(msg.text);
-        await u.save();
-
-        delete admin[msg.from.id];
-        return bot.sendMessage(msg.chat.id, "✅ Updated");
-    }
-});
-
-// ================= TON PAYMENTS =================
+// --- СКАНЕР ДОНАТОВ (TON) ---
 setInterval(async () => {
     try {
-        const r = await axios.get(
-            `https://toncenter.com/api/v2/getTransactions?address=${CONFIG.WALLET}&limit=10&api_key=${process.env.TON_API_KEY}`
-        );
-
-        if (!r.data?.ok) return;
-
-        for (const tx of r.data.result) {
-            const uid = tx.in_msg?.message?.trim();
-            const lt = tx.transaction_id?.lt;
-            const value = (tx.in_msg?.value || 0) / 1e9;
-
-            if (!uid || !lt) continue;
-
-            const user = await User.findOne({ uid });
-            if (!user) continue;
-
-            if (BigInt(lt) > BigInt(user.last_lt)) {
-                user.balance += value;
-                user.last_lt = lt.toString();
-                await user.save();
+        const r = await axios.get(`https://toncenter.com/api/v2/getTransactions?address=${CONFIG.WALLET}&limit=15&api_key=${CONFIG.TON_KEY}`);
+        if (r.data.ok) {
+            for (let tx of r.data.result) {
+                const comment = tx.in_msg?.message?.trim();
+                const lt = tx.transaction_id.lt;
+                const val = parseInt(tx.in_msg?.value || 0) / 1e9;
+                if (!comment) continue;
+                const u = await User.findOne({ uid: comment.toString() });
+                if (u && BigInt(lt) > BigInt(u.last_lt || "0")) { 
+                    u.balance += val; u.last_lt = lt.toString(); await u.save(); 
+                    console.log(`💰 +${val} TON юзеру ${u.uid}`);
+                }
             }
         }
     } catch (e) {}
-}, 30000);
+}, 25000);
 
-// ================= API =================
+// --- API ИГРЫ ---
 app.post('/api/sync', async (req, res) => {
-    const u = await User.findOne({ uid: req.body.uid });
+    const u = await User.findOne({ uid: req.body.uid?.toString() });
     res.json(u || { balance: 0, spins: 0, wins: 0 });
 });
 
 app.post('/api/spin', async (req, res) => {
-    const { uid, bet } = req.body;
-    const b = parseFloat(bet);
-
-    if (!Number.isFinite(b) || b < CONFIG.MIN_BET)
-        return res.json({ err: "min bet" });
-
-    const u = await User.findOne({ uid });
-    if (!u || u.balance < b)
-        return res.json({ err: "no balance" });
-
+    const { uid, bet } = req.body; const b = parseFloat(bet);
+    const u = await User.findOne({ uid: uid.toString() });
+    if (!u || u.balance < b || b < GAME_SETTINGS.minBet) return res.json({ err: "Недостаточно средств" });
     u.balance -= b;
-
     const items = ['🍒','🔔','💎','7️⃣','🍋'];
-    let r = [items[0], items[1], items[2]];
-
-    if (Math.random() < CONFIG.WIN_CHANCE)
-        r = ['7️⃣','7️⃣','7️⃣'];
-
-    const win = r[0] === r[1] && r[1] === r[2];
-
-    if (win) u.balance += b * CONFIG.WIN_MULTIPLIER;
-
-    u.spins++;
-    if (win) u.wins++;
-
-    await u.save();
-
-    res.json({ result: r, balance: u.balance, win });
+    let resArr = [items[Math.floor(Math.random()*5)], items[Math.floor(Math.random()*5)], items[Math.floor(Math.random()*5)]];
+    if (Math.random() < GAME_SETTINGS.winChance) resArr = ['7️⃣','7️⃣','7️⃣'];
+    const isWin = resArr[0] === resArr[1] && resArr[1] === resArr[2];
+    const winSum = isWin ? b * GAME_SETTINGS.winMultiplier : 0;
+    u.balance += winSum; u.spins++; if(isWin) u.wins++; await u.save();
+    res.json({ result: resArr, winSum, balance: u.balance });
 });
 
-// ================= ROOT =================
+app.post('/api/promo', async (req, res) => {
+    const { uid, code } = req.body;
+    const p = await Promo.findOne({ code: code.toUpperCase() });
+    const u = await User.findOne({ uid: uid.toString() });
+    if (!p || p.count >= p.limit || u.used_promos.includes(p.code)) return res.json({ err: "Ошибка кода" });
+    u.balance += p.sum; u.used_promos.push(p.code); p.count++; await u.save(); await p.save();
+    res.json({ msg: "Бонус получен!", balance: u.balance });
+});
+
+// --- ФРОНТЕНД (ИНТЕРФЕЙС) ---
 app.get('/', (req, res) => {
-    res.send("🎰 CASINO SERVER RUNNING");
+    res.send(`<!DOCTYPE html><html><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover"><script src="https://telegram.org/js/telegram-web-app.js"></script><style>
+    body { margin:0; padding:0; font-family:sans-serif; text-align:center; height:100vh; color:#fff; background:#000 url('${CONFIG.BG_IMAGE}') no-repeat center center fixed; background-size:cover; overflow:hidden; }
+    body::before { content:""; position:absolute; inset:0; background:rgba(0,0,0,0.65); z-index:-1; }
+    .nav { display:flex; background:rgba(0,0,0,0.85); border-bottom:2px solid #ff00ff; position:sticky; top:0; z-index:10; }
+    .tab { flex:1; padding:15px; font-weight:bold; font-size:12px; cursor:pointer; opacity:0.6; }
+    .tab.active { opacity:1; color:#00ffff; border-bottom:2px solid #00ffff; }
+    .page { display:none; padding:20px; height:85vh; overflow-y:auto; box-sizing:border-box; }
+    .page.active { display:block; }
+    .card { background:rgba(255,255,255,0.1); border:1px solid rgba(0,255,255,0.4); padding:15px; margin-bottom:15px; border-radius:15px; backdrop-filter:blur(8px); }
+    .bal-val { font-size:38px; color:#ffff00; font-weight:bold; text-shadow:0 0 10px rgba(255,255,0,0.5); }
+    .copy-box { background:#000; border:1px dashed #00ffff; padding:12px; margin:10px 0; font-family:monospace; font-size:11px; color:#00ffff; cursor:pointer; border-radius:10px; word-break:break-all; }
+    .reel-cont { display:flex; justify-content:center; gap:10px; margin:20px 0; }
+    .reel { width:85px; height:110px; background:#000; border:2px solid #fff; overflow:hidden; position:relative; border-radius:12px; }
+    .strip { width:100%; position:absolute; top:0; left:0; }
+    .sym { height:110px; display:flex; align-items:center; justify-content:center; font-size:55px; }
+    .btn-main { width:100%; padding:18px; background:#ffff00; color:#000; border:none; font-size:20px; font-weight:bold; border-radius:15px; cursor:pointer; transition: 0.2s; }
+    .btn-main:active { transform: scale(0.95); }
+    input { width:90%; padding:12px; margin:10px 0; background:#000; border:1px solid #fff; color:#fff; text-align:center; border-radius:10px; font-size:16px; }
+</style></head>
+<body>
+    <audio id="bgm" loop src="${GAME_SETTINGS.bgmUrl}"></audio>
+    <div class="nav">
+        <div class="tab active" onclick="sh(1)" id="t1">🎰 ИГРА</div>
+        <div class="tab" onclick="sh(2)" id="t2">📊 СТАТЫ</div>
+        <div class="tab" onclick="sh(3)" id="t3">💰 КАССА</div>
+        <div class="tab" onclick="sh(4)" id="t4">⚙️</div>
+    </div>
+    <div id="p1" class="page active">
+        <div class="card"><div>ВАШ БАЛАНС</div><div id="bal" class="bal-val">0.00</div></div>
+        <div class="reel-cont"><div class="reel"><div class="strip" id="s1"></div></div><div class="reel"><div class="strip" id="s2"></div></div><div class="reel"><div class="strip" id="s3"></div></div></div>
+        <input type="number" id="bet" value="0.1" step="0.1" min="0.01">
+        <button class="btn-main" onclick="spin()" id="sBtn">ИГРАТЬ</button>
+        <div class="card" style="margin-top:20px"><input id="p-in" placeholder="ПРОМОКОД"><br><button onclick="applyP()" style="color:#00ffff; background:none; border:none; font-weight:bold; cursor:pointer; margin-top:10px;">АКТИВИРОВАТЬ</button></div>
+    </div>
+    <div id="p2" class="page"><div class="card"><h3>СТАТИСТИКА</h3><p>Всего спинов: <span id="st-s">0</span></p><p>Всего побед: <span id="st-w">0</span></p></div></div>
+    <div id="p3" class="page">
+        <div class="card"><h3>ПОПОЛНЕНИЕ TON</h3><p style="font-size:12px">Отправьте TON на адрес ниже.</p><div class="copy-box" onclick="copyText('${CONFIG.WALLET}')">${CONFIG.WALLET}</div>
+        <p>⚠️ ОБЯЗАТЕЛЬНО УКАЖИТЕ В КОММЕНТАРИЙ:</p><div class="copy-box" style="font-size:24px; font-weight:bold;" id="u-id-box" onclick="copyText(window.uid)">...</div></div>
+    </div>
+    <div id="p4" class="page"><div class="card"><button onclick="toggleM()" id="mBtn" style="width:100%; padding:15px; background:#222; color:#fff; border:1px solid #ff00ff; border-radius:10px;">🔇 МУЗЫКА: ВЫКЛ</button></div></div>
+    <script>
+        const tg = window.Telegram.WebApp; window.uid = tg.initDataUnsafe?.user?.id?.toString() || "12345";
+        const items = ['🍒','🔔','💎','7️⃣','🍋']; const bgm = document.getElementById('bgm');
+        function copyText(t){const e=document.createElement('textarea');e.value=t;document.body.appendChild(e);e.select();document.execCommand('copy');document.body.removeChild(e);tg.showAlert("Скопировано!");}
+        function toggleM(){ if(bgm.paused){bgm.play().catch(()=>{}); document.getElementById('mBtn').innerText='🔊 МУЗЫКА: ВКЛ';} else {bgm.pause(); document.getElementById('mBtn').innerText='🔇 МУЗЫКА: ВЫКЛ';}}
+        function sh(n){document.querySelectorAll('.page').forEach((p,i)=>p.classList.toggle('active',i+1===n));document.querySelectorAll('.tab').forEach((t,i)=>t.classList.toggle('active',i+1===n));sync();}
+        async function sync(){ const r=await fetch('/api/sync',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({uid:window.uid})}); const d=await r.json(); document.getElementById('bal').innerText=d.balance.toFixed(2); document.getElementById('u-id-box').innerText=window.uid; document.getElementById('st-s').innerText=d.spins; document.getElementById('st-w').innerText=d.wins; }
+        function build(){[1,2,3].forEach(i=>{const s=document.getElementById('s'+i);s.innerHTML='';for(let j=0;j<41;j++)s.innerHTML+='<div class="sym">'+items[Math.floor(Math.random()*5)]+'</div>';});}
+        async function spin(){
+            const b=parseFloat(document.getElementById('bet').value); const r=await fetch('/api/spin',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({uid:window.uid,bet:b})}); const d=await r.json(); if(d.err)return tg.showAlert(d.err);
+            document.getElementById('sBtn').disabled=true; tg.HapticFeedback.impactOccurred('medium');
+            [1,2,3].forEach(i=>{const s=document.getElementById('s'+i);s.lastElementChild.innerText=d.result[i-1];s.style.transition='none';s.style.transform='translateY(0)';setTimeout(()=>{s.style.transition='transform '+(2+i*0.5)+'s cubic-bezier(0.1, 0.9, 0.1, 1)';s.style.transform='translateY(-4400px)';},50);});
+            setTimeout(()=>{sync();document.getElementById('sBtn').disabled=false;if(d.winSum>0)tg.showAlert("ВЫИГРЫШ: +"+d.winSum.toFixed(2)+" TON!");},4000);
+        }
+        async function applyP(){ const code=document.getElementById('p-in').value; const r=await fetch('/api/promo',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({uid:window.uid,code})}); const d=await r.json(); tg.showAlert(d.err||d.msg); sync(); }
+        build(); sync(); tg.expand();
+    </script>
+</body></html>`);
 });
-
-// ================= START SERVER =================
-app.listen(PORT, () => {
-    console.log("🚀 Server running on port", PORT);
-});
+app.listen(PORT,()=>console.log("🚀 SERVER READY ON PORT "+PORT));
