@@ -15,21 +15,15 @@ const CONFIG = {
     WIN_MULTIPLIER: 10,
     START_BALANCE: 0.10,
     BG_IMAGE: "https://files.catbox.moe/ep8e91.png",
-    BGM_URL: process.env.BGM_URL || "https://files.catbox.moe/ef3c37.mp3",
+    BGM_URL: "https://files.catbox.moe/78surr.mp3",
     MIN_BET: 0.01
 };
+const ACTIVE_BGM_URL = process.env.BGM_URL || "https://files.catbox.moe/ef3c37.mp3";
 const GAME_SETTINGS = {
     winChance: CONFIG.WIN_CHANCE,
     winMultiplier: CONFIG.WIN_MULTIPLIER,
     minBet: CONFIG.MIN_BET
 };
-const ADMIN_MENU_BUTTONS = [
-    [{ text: "📢 РАССЫЛКА", callback_data: "adm_mail" }],
-    [{ text: "🎁 ПРОМО", callback_data: "adm_promo" }],
-    [{ text: "📊 СТАТИСТИКА", callback_data: "adm_stats" }],
-    [{ text: "💰 ИЗМЕНИТЬ БАЛАНС", callback_data: "adm_balance" }],
-    [{ text: "🎛 НАСТРОЙКИ ИГРЫ", callback_data: "adm_game" }]
-];
 
 mongoose.connect(process.env.MONGO_URI).then(() => console.log("✅ База подключена"));
 
@@ -60,6 +54,19 @@ if (process.env.BOT_TOKEN) {
         if (msg.from.id === CONFIG.ADMIN_ID) kb.push([{ text: "🛠 АДМИНКА", callback_data: "adm_main" }]);
         bot.sendMessage(msg.chat.id, `🎰 *TON CASINO*\n\nID: \`${uid}\``, { parse_mode: 'Markdown', reply_markup: { inline_keyboard: kb } });
     });
+    bot.onText(/\/gamecfg/, async (msg) => {
+        if (msg.from.id !== CONFIG.ADMIN_ID) return;
+        bot.sendMessage(msg.chat.id, `🎛 *ИГРОВЫЕ НАСТРОЙКИ*\n\nШанс победы: *${(GAME_SETTINGS.winChance * 100).toFixed(1)}%*\nМножитель: *x${GAME_SETTINGS.winMultiplier}*\nМин. ставка: *${GAME_SETTINGS.minBet} TON*`, {
+            parse_mode: 'Markdown',
+            reply_markup: {
+                inline_keyboard: [
+                    [{ text: "🎯 Изменить шанс", callback_data: "adm_set_chance" }],
+                    [{ text: "💸 Изменить множитель", callback_data: "adm_set_mult" }],
+                    [{ text: "🪙 Изменить мин. ставку", callback_data: "adm_set_minbet" }]
+                ]
+            }
+        });
+    });
 
     bot.on('callback_query', async (q) => {
         if (q.from.id !== CONFIG.ADMIN_ID) return;
@@ -67,7 +74,12 @@ if (process.env.BOT_TOKEN) {
             bot.sendMessage(q.message.chat.id, "🛠 *МЕНЮ*", {
                 parse_mode: 'Markdown',
                 reply_markup: {
-                    inline_keyboard: ADMIN_MENU_BUTTONS
+                    inline_keyboard: [
+                        [{ text: "📢 РАССЫЛКА", callback_data: "adm_mail" }],
+                        [{ text: "🎁 ПРОМО", callback_data: "adm_promo" }],
+                        [{ text: "📊 СТАТИСТИКА", callback_data: "adm_stats" }],
+                        [{ text: "💰 ИЗМЕНИТЬ БАЛАНС", callback_data: "adm_balance" }]
+                    ]
                 }
             });
         }
@@ -233,7 +245,7 @@ app.post('/api/spin', async (req, res) => {
 app.get('/api/config', (req, res) => {
     res.json({
         minBet: GAME_SETTINGS.minBet,
-        bgmUrl: CONFIG.BGM_URL
+        bgmUrl: ACTIVE_BGM_URL
     });
 });
 
@@ -306,7 +318,7 @@ app.get('/', (req, res) => {
         const items = ['🍒','🔔','💎','7️⃣','🍋'];
         const audio = new Audio();
         audio.loop = true;
-        let cfg = { minBet: ${GAME_SETTINGS.minBet}, bgmUrl: "${CONFIG.BGM_URL}" };
+        let cfg = { minBet: ${GAME_SETTINGS.minBet}, bgmUrl: "${ACTIVE_BGM_URL}" };
         const defaults = { musicEnabled: true, volume: 35, vibeEnabled: true };
         const settings = {
             musicEnabled: localStorage.getItem('musicEnabled') !== null ? localStorage.getItem('musicEnabled') === 'true' : defaults.musicEnabled,
