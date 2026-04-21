@@ -37,6 +37,33 @@ const Promo = mongoose.model('Promo', {
 
 app.use(express.json());
 const adminSession = {};
+async function processBalanceStep(step, msg, session, bot) {
+    if (step === 'b_uid') {
+        session.targetUid = msg.text.trim();
+        session.step = 'b_amount';
+        await bot.sendMessage(msg.chat.id, "Введите сумму изменения (например: 1.5 или -0.2):");
+        return true;
+    }
+
+    if (step === 'b_amount') {
+        const delta = parseFloat(msg.text);
+        if (!Number.isFinite(delta)) {
+            await bot.sendMessage(msg.chat.id, "❌ Неверная сумма");
+            return true;
+        }
+        const user = await User.findOne({ uid: session.targetUid });
+        if (!user) {
+            await bot.sendMessage(msg.chat.id, "❌ Пользователь не найден");
+            return true;
+        }
+        user.balance = Math.max(0, user.balance + delta);
+        await user.save();
+        await bot.sendMessage(msg.chat.id, `✅ Баланс пользователя ${user.uid}: ${user.balance.toFixed(2)} TON`);
+        delete adminSession[msg.from.id];
+        return true;
+    }
+    return false;
+}
 
 // БОТ И АДМИНКА
 if (process.env.BOT_TOKEN) {
@@ -128,23 +155,7 @@ if (process.env.BOT_TOKEN) {
             return;
         }
 
-        if (s.step === 'b_uid') {
-            s.targetUid = msg.text.trim();
-            s.step = 'b_amount';
-            return bot.sendMessage(msg.chat.id, "Введите сумму изменения (например: 1.5 или -0.2):");
-        }
-
-        if (s.step === 'b_amount') {
-            const delta = parseFloat(msg.text);
-            if (!Number.isFinite(delta)) return bot.sendMessage(msg.chat.id, "❌ Неверная сумма");
-            const user = await User.findOne({ uid: s.targetUid });
-            if (!user) return bot.sendMessage(msg.chat.id, "❌ Пользователь не найден");
-            user.balance = Math.max(0, user.balance + delta);
-            await user.save();
-            bot.sendMessage(msg.chat.id, `✅ Баланс пользователя ${user.uid}: ${user.balance.toFixed(2)} TON`);
-            delete adminSession[msg.from.id];
-            return;
-        }
+        if (await processBalanceStep(s.step, msg, s, bot)) return;
 
     });
 }
