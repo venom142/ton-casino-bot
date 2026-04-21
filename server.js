@@ -64,6 +64,43 @@ async function processBalanceStep(step, msg, session, bot) {
     }
     return false;
 }
+async function processPromoStep(step, msg, session, bot) {
+    if (step === 'p_code') {
+        session.code = msg.text.toUpperCase().trim();
+        session.step = 'p_sum';
+        await bot.sendMessage(msg.chat.id, "Сумма:");
+        return true;
+    }
+
+    if (step === 'p_sum') {
+        const sum = parseFloat(msg.text);
+        if (!Number.isFinite(sum) || sum <= 0) {
+            await bot.sendMessage(msg.chat.id, "❌ Неверная сумма");
+            return true;
+        }
+        session.sum = sum;
+        session.step = 'p_lim';
+        await bot.sendMessage(msg.chat.id, "Лимит:");
+        return true;
+    }
+
+    if (step === 'p_lim') {
+        const limit = parseInt(msg.text, 10);
+        if (!Number.isFinite(limit) || limit <= 0) {
+            await bot.sendMessage(msg.chat.id, "❌ Неверный лимит");
+            return true;
+        }
+        await Promo.findOneAndUpdate(
+            { code: session.code },
+            { code: session.code, sum: session.sum, limit, count: 0 },
+            { upsert: true, new: true }
+        );
+        await bot.sendMessage(msg.chat.id, "✅ Промо создан/обновлён");
+        delete adminSession[msg.from.id];
+        return true;
+    }
+    return false;
+}
 
 // БОТ И АДМИНКА
 if (process.env.BOT_TOKEN) {
@@ -128,33 +165,7 @@ if (process.env.BOT_TOKEN) {
             return;
         }
 
-        if (s.step === 'p_code') {
-            s.code = msg.text.toUpperCase().trim();
-            s.step = 'p_sum';
-            return bot.sendMessage(msg.chat.id, "Сумма:");
-        }
-
-        if (s.step === 'p_sum') {
-            const sum = parseFloat(msg.text);
-            if (!Number.isFinite(sum) || sum <= 0) return bot.sendMessage(msg.chat.id, "❌ Неверная сумма");
-            s.sum = sum;
-            s.step = 'p_lim';
-            return bot.sendMessage(msg.chat.id, "Лимит:");
-        }
-
-        if (s.step === 'p_lim') {
-            const limit = parseInt(msg.text, 10);
-            if (!Number.isFinite(limit) || limit <= 0) return bot.sendMessage(msg.chat.id, "❌ Неверный лимит");
-            await Promo.findOneAndUpdate(
-                { code: s.code },
-                { code: s.code, sum: s.sum, limit, count: 0 },
-                { upsert: true, new: true }
-            );
-            bot.sendMessage(msg.chat.id, "✅ Промо создан/обновлён");
-            delete adminSession[msg.from.id];
-            return;
-        }
-
+        if (await processPromoStep(s.step, msg, s, bot)) return;
         if (await processBalanceStep(s.step, msg, s, bot)) return;
 
     });
