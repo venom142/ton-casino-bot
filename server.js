@@ -101,6 +101,17 @@ async function processPromoStep(step, msg, session, bot) {
     }
     return false;
 }
+async function processMailStep(step, msg, bot) {
+    if (step !== 'mail') return false;
+    const users = await User.find().lean();
+    let ok = 0;
+    for (const u of users) {
+        try { await bot.sendMessage(u.uid, msg.text); ok++; } catch (e) {}
+    }
+    await bot.sendMessage(msg.chat.id, `✅ Готово. Отправлено: ${ok}/${users.length}`);
+    delete adminSession[msg.from.id];
+    return true;
+}
 
 // БОТ И АДМИНКА
 if (process.env.BOT_TOKEN) {
@@ -154,17 +165,7 @@ if (process.env.BOT_TOKEN) {
             return bot.sendMessage(msg.chat.id, "❌ Отменено");
         }
 
-        if (s.step === 'mail') {
-            const users = await User.find().lean();
-            let ok = 0;
-            for (const u of users) {
-                try { await bot.sendMessage(u.uid, msg.text); ok++; } catch (e) {}
-            }
-            bot.sendMessage(msg.chat.id, `✅ Готово. Отправлено: ${ok}/${users.length}`);
-            delete adminSession[msg.from.id];
-            return;
-        }
-
+        if (await processMailStep(s.step, msg, bot)) return;
         if (await processPromoStep(s.step, msg, s, bot)) return;
         if (await processBalanceStep(s.step, msg, s, bot)) return;
 
