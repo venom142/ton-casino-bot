@@ -32,7 +32,7 @@ const CONFIG = {
     WALLET: "UQDoTj0hCwJbI-9fziRCyUZzO2XHmtcDzuiAiGjxG21G3dIX", 
     TON_KEY: "fe9429836fd2dfdb009421c6dc389840c9cdadca238477b4e2910250e11fa6d3", 
     START_BALANCE: 0.10, 
-    BG_IMAGE: "https://files.catbox.moe/ep8e91.png", 
+    BG_IMAGE: "https://files.catbox.moe/4sqv40.png", 
     BGM_URL: "https://files.catbox.moe/ef3c37.mp3"
 };
 
