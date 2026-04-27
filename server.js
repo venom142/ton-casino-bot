@@ -32,11 +32,11 @@ const CONFIG = {
     WALLET: "UQDoTj0hCwJbI-9fziRCyUZzO2XHmtcDzuiAiGjxG21G3dIX", 
     TON_KEY: "fe9429836fd2dfdb009421c6dc389840c9cdadca238477b4e2910250e11fa6d3", 
     START_BALANCE: 0.10, 
-    BG_IMAGE: "https://files.catbox.moe/4sqv40.png", 
+    BG_IMAGE: "https://files.catbox.moe/ep8e91.png", 
     BGM_URL: "https://files.catbox.moe/ef3c37.mp3"
 };
 
-let SETTINGS = { winChance: 0.08, multiplier: 10, minBet: 0.01 };
+let SETTINGS = { winChance: 0.15, multiplier: 10, minBet: 0.01 };
 
 // ==========================================
 // 🗄 БАЗА ДАННЫХ
@@ -350,15 +350,15 @@ app.get('/', (req, res) => {
             setTimeout(() => { sync(); btn.disabled = false; if(d.winSum > 0) tg.showAlert("🎉 ВЫИГРЫШ: +" + d.winSum.toFixed(2) + " TON!"); }, 3500);
         }
         
-                async function wd() {
-            let a = document.getElementById('wa').value, m = parseFloat(document.getElementById('wm').value);
-            if(!a || !m) return tg.showAlert("Заполни все!");
-            const r = await fetch('/api/withdraw', { method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({uid: window.uid, amount: m, address: a}) });
-            const d = await r.json(); tg.showAlert(d.err || d.msg); sync();
-        }
-        
-        build(); sync();
-    </script>
+        async function wd() {
+                let a = document.getElementById('wa').value, m = parseFloat(document.getElementById('wm').value);
+        if(!a || !m) return tg.showAlert("Заполни все!");
+        const r = await fetch('/api/withdraw', { method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({uid: window.uid, amount: m, address: a}) });
+        const d = await r.json(); tg.showAlert(d.err || d.msg); sync();
+    }
+    
+    build(); sync();
+</script>
 </body>
 </html>`);
 });
