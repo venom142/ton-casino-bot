@@ -350,5 +350,17 @@ app.get('/', (req, res) => {
             setTimeout(() => { sync(); btn.disabled = false; if(d.winSum > 0) tg.showAlert("🎉 ВЫИГРЫШ: +" + d.winSum.toFixed(2) + " TON!"); }, 3500);
         }
         
-        async function wd() {
-            let a = document.getElementById('wa').value, m = parseFloat(document.getElementById('w
+                async function wd() {
+            let a = document.getElementById('wa').value, m = parseFloat(document.getElementById('wm').value);
+            if(!a || !m) return tg.showAlert("Заполни все!");
+            const r = await fetch('/api/withdraw', { method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({uid: window.uid, amount: m, address: a}) });
+            const d = await r.json(); tg.showAlert(d.err || d.msg); sync();
+        }
+        
+        build(); sync();
+    </script>
+</body>
+</html>`);
+});
+
+app.listen(PORT, '0.0.0.0', () => console.log(`🚀 Сервер VIP TON запущен на порту ${PORT}!`));
