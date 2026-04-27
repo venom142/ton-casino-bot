@@ -36,7 +36,7 @@ const CONFIG = {
     BGM_URL: "https://files.catbox.moe/ef3c37.mp3"
 };
 
-let SETTINGS = { winChance: 0.15, multiplier: 10, minBet: 0.01 };
+let SETTINGS = { winChance: 0.08, multiplier: 10, minBet: 0.01 };
 
 // ==========================================
 // 🗄 БАЗА ДАННЫХ
