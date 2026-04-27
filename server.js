@@ -5,7 +5,7 @@ const mongoose = require('mongoose');
 const axios = require('axios');
 
 // ==========================================
-// 🛡 АНТИ-КРАШ СИСТЕМА
+// 🛡 АНТИ-КРАШ СИСТЕМА (ЧТОБЫ НЕ БЫЛО STATUS 1)
 // ==========================================
 process.on('uncaughtException', (err) => {
     console.error('💥 КРИТИЧЕСКАЯ ОШИБКА (Uncaught Exception):', err.message);
@@ -16,6 +16,7 @@ process.on('unhandledRejection', (reason, promise) => {
 
 console.log("🛠 Запуск сервера VIP TON...");
 
+// ПРОВЕРКА ПЕРЕМЕННЫХ
 if (!process.env.BOT_TOKEN || !process.env.MONGO_URI) {
     console.error("❌ ОШИБКА: Заполни BOT_TOKEN и MONGO_URI в настройках хостинга (.env)!");
     process.exit(1);
@@ -32,7 +33,8 @@ const CONFIG = {
     WALLET: "UQDoTj0hCwJbI-9fziRCyUZzO2XHmtcDzuiAiGjxG21G3dIX", 
     TON_KEY: "fe9429836fd2dfdb009421c6dc389840c9cdadca238477b4e2910250e11fa6d3", 
     START_BALANCE: 0.10, 
-    BG_IMAGE: "https://files.catbox.moe/ep8e91.png", 
+    // ТЕПЕРЬ ЭТО ВИДЕО-ФОН
+    BG_VIDEO: "https://files.catbox.moe/bvbg1g.mp4", 
     BGM_URL: "https://files.catbox.moe/ef3c37.mp3"
 };
 
@@ -220,9 +222,14 @@ app.get('/', (req, res) => {
     <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no">
     <script src="https://telegram.org/js/telegram-web-app.js"></script>
     <style>
-        :root { --gold: #FFD700; --dark: #0f0f13; } 
-        body { margin: 0; font-family: sans-serif; text-align: center; color: #fff; background: var(--dark) url('${CONFIG.BG_IMAGE}') no-repeat center fixed; background-size: cover; overflow: hidden; user-select: none; } 
-        body::before { content: ""; position: absolute; inset: 0; background: radial-gradient(circle, rgba(15,15,19,0.8) 0%, rgba(0,0,0,0.95) 100%); z-index: -1; } 
+        :root { --gold: #FFD700; --dark: #000; } 
+        body { margin: 0; font-family: sans-serif; text-align: center; color: #fff; background-color: #000; overflow: hidden; user-select: none; position: relative; } 
+        /* ТЕПЕРЬ ТЕМНАЯ ПОДКЛАДКА ПОВЕРХ ВИДЕО, ЧТОБЫ ТЕКСТ БЫЛ ЧИТАЕМЫМ */
+        body::before { content: ""; position: fixed; inset: 0; background: rgba(0,0,0,0.4); z-index: -1; } 
+        
+        /* СТИЛЬ ДЛЯ ВИДЕО-ФОНА */
+        .back-video { position: fixed; right: 0; bottom: 0; min-width: 100%; min-height: 100%; z-index: -2; object-fit: cover; }
+
         .nav { display: flex; background: rgba(0,0,0,0.8); border-bottom: 2px solid var(--gold); } 
         .tab { flex: 1; padding: 15px 5px; font-size: 12px; font-weight: 800; color: #888; cursor: pointer; transition: 0.3s; } 
         .tab.active { color: var(--gold); border-bottom: 3px solid var(--gold); } 
@@ -244,6 +251,10 @@ app.get('/', (req, res) => {
     </style>
 </head>
 <body>
+    <video autoplay loop muted playsinline class="back-video" id="bgVideo">
+        <source src="${CONFIG.BG_VIDEO}" type="video/mp4">
+    </video>
+
     <audio id="bgm" loop src="${CONFIG.BGM_URL}"></audio>
     
     <div class="nav">
@@ -270,7 +281,8 @@ app.get('/', (req, res) => {
     
     <div id="pg2" class="page">
         <div class="card"><h2 style="color:var(--gold)">СТАТИСТИКА</h2><p>Спинов: <b id="st-s">0</b></p><p>Побед: <b id="st-w" style="color:var(--gold)">0</b></p></div>
-        <div class="card">
+        
+        <div class="card card_promo">
             <h3 style="color:var(--gold);margin-top:0;">🎁 ПРОМОКОД</h3>
             <input type="text" id="promo" placeholder="Введите код...">
             <button class="btn-main" style="font-size:16px;padding:15px;margin-top:10px;" onclick="usePromo()">АКТИВИРОВАТЬ</button>
@@ -278,13 +290,13 @@ app.get('/', (req, res) => {
     </div>
     
     <div id="pg3" class="page">
-        <div class="card">
+        <div class="card card_dep">
             <h3 style="color:var(--gold);margin-top:0;">ДЕПОЗИТ TON</h3>
             <div class="copy-box" onclick="cp('${CONFIG.WALLET}')">${CONFIG.WALLET}</div>
             <p style="font-weight:bold;margin-top:20px;">ID ДЛЯ КОММЕНТАРИЯ:</p>
             <div class="copy-box" style="font-size:24px;text-align:center;" id="myid" onclick="cp(window.uid)">...</div>
         </div>
-        <div class="card">
+        <div class="card card_wd">
             <h3 style="color:var(--gold);margin-top:0;">ВЫВОД</h3>
             <input type="text" id="wa" placeholder="Адрес кошелька">
             <input type="number" id="wm" placeholder="Сумма" style="margin-top:10px;">
@@ -306,6 +318,7 @@ app.get('/', (req, res) => {
         function cp(t) { let e = document.createElement('textarea'); e.value = t; document.body.appendChild(e); e.select(); document.execCommand('copy'); document.body.removeChild(e); tg.showAlert("✅ Скопировано!"); }
         function tm() { if(bgm.paused) { bgm.play(); document.getElementById('mBtn').innerText = '🔊 Выключить музыку'; } else { bgm.pause(); document.getElementById('mBtn').innerText = '🔇 Включить музыку'; } }
         
+        // БРОНЕБОЙНОЕ ПЕРЕКЛЮЧЕНИЕ ВКЛАДОК
         function sh(n) {
             document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
             document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
@@ -344,23 +357,23 @@ app.get('/', (req, res) => {
             
             [1, 2, 3].forEach(i => {
                 let s = document.getElementById('s' + i); s.style.transition = 'none'; s.style.transform = 'translateY(0)';
-                setTimeout(() => { s.lastElementChild.innerText = d.result[i - 1]; s.style.transition = 'transform ' + (2 + i * 0.5) + 's cubic-bezier(0.15,0.85,0.1,1)'; s.style.transform = 'translateY(-6490px)'; }, 50);
+        setTimeout(() => { s.lastElementChild.innerText = d.result[i - 1]; s.style.transition = 'transform ' + (2 + i * 0.5) + 's cubic-bezier(0.15,0.85,0.1,1)'; s.style.transform = 'translateY(-6490px)'; }, 50);
             });
             
             setTimeout(() => { sync(); btn.disabled = false; if(d.winSum > 0) tg.showAlert("🎉 ВЫИГРЫШ: +" + d.winSum.toFixed(2) + " TON!"); }, 3500);
         }
         
         async function wd() {
-                let a = document.getElementById('wa').value, m = parseFloat(document.getElementById('wm').value);
-        if(!a || !m) return tg.showAlert("Заполни все!");
-        const r = await fetch('/api/withdraw', { method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({uid: window.uid, amount: m, address: a}) });
-        const d = await r.json(); tg.showAlert(d.err || d.msg); sync();
-    }
-    
-    build(); sync();
-</script>
+            let a = document.getElementById('wa').value, m = parseFloat(document.getElementById('wm').value);
+            if(!a || !m) return tg.showAlert("Заполни все!");
+            const r = await fetch('/api/withdraw', { method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({uid: window.uid, amount: m, address: a}) });
+            const d = await r.json(); tg.showAlert(d.err || d.msg); sync();
+        }
+        
+        build(); sync();
+    </script>
 </body>
 </html>`);
 });
 
-app.listen(PORT, '0.0.0.0', () => console.log(`🚀 Сервер VIP TON запущен на порту ${PORT}!`));
+app.listen(PORT, '0.0.0.0', () => console.log(`🚀 СЕРВЕР VIP TON ЗАПУЩЕН НА ПОРТУ ${PORT}!`));
