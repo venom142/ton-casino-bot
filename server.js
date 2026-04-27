@@ -306,7 +306,6 @@ app.get('/', (req, res) => {
         function cp(t) { let e = document.createElement('textarea'); e.value = t; document.body.appendChild(e); e.select(); document.execCommand('copy'); document.body.removeChild(e); tg.showAlert("✅ Скопировано!"); }
         function tm() { if(bgm.paused) { bgm.play(); document.getElementById('mBtn').innerText = '🔊 Выключить музыку'; } else { bgm.pause(); document.getElementById('mBtn').innerText = '🔇 Включить музыку'; } }
         
-        // ВОТ ТОТ САМЫЙ ФИКС, ЧТОБЫ ВКЛАДКИ НЕ ПУТАЛИСЬ
         function sh(n) {
             document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
             document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
@@ -352,4 +351,4 @@ app.get('/', (req, res) => {
         }
         
         async function wd() {
-            let a = document.getElementBy
+            let a = document.getElementById('wa').value, m = parseFloat(document.getElementById('w
