@@ -5,7 +5,7 @@ const mongoose = require('mongoose');
 const axios = require('axios');
 
 // ==========================================
-// 🛡 АНТИ-КРАШ СИСТЕМА (ЧТОБЫ НЕ БЫЛО STATUS 1)
+// 🛡 АНТИ-КРАШ СИСТЕМА
 // ==========================================
 process.on('uncaughtException', (err) => {
     console.error('💥 КРИТИЧЕСКАЯ ОШИБКА (Uncaught Exception):', err.message);
@@ -16,7 +16,6 @@ process.on('unhandledRejection', (reason, promise) => {
 
 console.log("🛠 Запуск сервера VIP TON...");
 
-// ПРОВЕРКА ПЕРЕМЕННЫХ
 if (!process.env.BOT_TOKEN || !process.env.MONGO_URI) {
     console.error("❌ ОШИБКА: Заполни BOT_TOKEN и MONGO_URI в настройках хостинга (.env)!");
     process.exit(1);
@@ -307,9 +306,14 @@ app.get('/', (req, res) => {
         function cp(t) { let e = document.createElement('textarea'); e.value = t; document.body.appendChild(e); e.select(); document.execCommand('copy'); document.body.removeChild(e); tg.showAlert("✅ Скопировано!"); }
         function tm() { if(bgm.paused) { bgm.play(); document.getElementById('mBtn').innerText = '🔊 Выключить музыку'; } else { bgm.pause(); document.getElementById('mBtn').innerText = '🔇 Включить музыку'; } }
         
+        // ВОТ ТОТ САМЫЙ ФИКС, ЧТОБЫ ВКЛАДКИ НЕ ПУТАЛИСЬ
         function sh(n) {
-            document.querySelectorAll('.page').forEach((p, i) => p.classList.toggle('active', i + 1 === n));
-            document.querySelectorAll('.tab').forEach((t, i) => t.classList.toggle('active', i + 1 === n));
+            document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
+            document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+            
+            document.getElementById('pg' + n).classList.add('active');
+            document.querySelectorAll('.tab')[n - 1].classList.add('active');
+            
             sync();
         }
         
@@ -348,6 +352,4 @@ app.get('/', (req, res) => {
         }
         
         async function wd() {
-            let a = document.getElementById('wa').value, m = parseFloat(document.getElementById('wm').value);
-            if(!a || !m) return tg.showAlert("Заполни все!");
-            const
+            let a = document.getElementBy
