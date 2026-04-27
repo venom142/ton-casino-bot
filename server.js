@@ -270,14 +270,14 @@ app.get('/', (req, res) => {
     
     <div id="pg2" class="page">
         <div class="card"><h2 style="color:var(--gold)">СТАТИСТИКА</h2><p>Спинов: <b id="st-s">0</b></p><p>Побед: <b id="st-w" style="color:var(--gold)">0</b></p></div>
-    </div>
-    
-    <div id="pg3" class="page">
         <div class="card">
             <h3 style="color:var(--gold);margin-top:0;">🎁 ПРОМОКОД</h3>
             <input type="text" id="promo" placeholder="Введите код...">
             <button class="btn-main" style="font-size:16px;padding:15px;margin-top:10px;" onclick="usePromo()">АКТИВИРОВАТЬ</button>
         </div>
+    </div>
+    
+    <div id="pg3" class="page">
         <div class="card">
             <h3 style="color:var(--gold);margin-top:0;">ДЕПОЗИТ TON</h3>
             <div class="copy-box" onclick="cp('${CONFIG.WALLET}')">${CONFIG.WALLET}</div>
@@ -351,16 +351,4 @@ app.get('/', (req, res) => {
         }
         
         async function wd() {
-                    let a = document.getElementById('wa').value, m = parseFloat(document.getElementById('wm').value);
-        if(!a || !m) return tg.showAlert("Заполни все!");
-        const r = await fetch('/api/withdraw', { method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({uid: window.uid, amount: m, address: a}) });
-        const d = await r.json(); tg.showAlert(d.err || d.msg); sync();
-    }
-    
-    build(); sync();
-</script>
-</body>
-</html>`);
-});
-
-app.listen(PORT, '0.0.0.0', () => console.log(`🚀 Сервер VIP TON запущен на порту ${PORT}!`));
+            let a = document.getElementById('wa').value, m = parseFloat(document.getElementById('w
