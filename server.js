@@ -5,20 +5,19 @@ const mongoose = require('mongoose');
 const axios = require('axios');
 
 // ==========================================
-// 🛡 АНТИ-КРАШ СИСТЕМА (ЧТОБЫ НЕ БЫЛО STATUS 1)
+// 🛡 АНТИ-КРАШ СИСТЕМА
 // ==========================================
 process.on('uncaughtException', (err) => {
-    console.error('💥 КРИТИЧЕСКАЯ ОШИБКА (Uncaught Exception):', err.message);
+    console.error('💥 КРИТИЧЕСКАЯ ОШИБКА:', err.message);
 });
-process.on('unhandledRejection', (reason, promise) => {
-    console.error('💥 СКРЫТАЯ ОШИБКА (Unhandled Rejection):', reason);
+process.on('unhandledRejection', (reason) => {
+    console.error('💥 СКРЫТАЯ ОШИБКА:', reason);
 });
 
-console.log("🛠 Запуск сервера VIP TON...");
+console.log("🛠 Запуск сервера VIP TON IMPERIAL...");
 
-// ПРОВЕРКА ПЕРЕМЕННЫХ
 if (!process.env.BOT_TOKEN || !process.env.MONGO_URI) {
-    console.error("❌ ОШИБКА: Заполни BOT_TOKEN и MONGO_URI в настройках хостинга (.env)!");
+    console.error("❌ ОШИБКА: Заполни BOT_TOKEN и MONGO_URI!");
     process.exit(1);
 }
 
@@ -33,7 +32,6 @@ const CONFIG = {
     WALLET: "UQDoTj0hCwJbI-9fziRCyUZzO2XHmtcDzuiAiGjxG21G3dIX", 
     TON_KEY: "fe9429836fd2dfdb009421c6dc389840c9cdadca238477b4e2910250e11fa6d3", 
     START_BALANCE: 0.10, 
-    // ТЕПЕРЬ ЭТО ВИДЕО-ФОН
     BG_VIDEO: "https://files.catbox.moe/bvbg1g.mp4", 
     BGM_URL: "https://files.catbox.moe/ef3c37.mp3"
 };
@@ -44,8 +42,8 @@ let SETTINGS = { winChance: 0.15, multiplier: 10, minBet: 0.01 };
 // 🗄 БАЗА ДАННЫХ
 // ==========================================
 mongoose.connect(process.env.MONGO_URI)
-    .then(() => console.log("💎 База данных MongoDB УСПЕШНО подключена!"))
-    .catch(err => console.error("❌ Ошибка MongoDB:", err.message));
+    .then(() => console.log("💎 MongoDB подключена!"))
+    .catch(err => console.error("❌ Ошибка БД:", err.message));
 
 const User = mongoose.model('User', { 
     uid: String, 
@@ -64,8 +62,6 @@ const Promo = mongoose.model('Promo', {
 // 🤖 ТЕЛЕГРАМ БОТ
 // ==========================================
 const bot = new TelegramBot(process.env.BOT_TOKEN, { polling: true });
-bot.on("polling_error", (err) => console.log("🚨 Ошибка Телеграм-соединения (Polling):", err.message));
-
 const adminState = {};
 
 bot.onText(/\/start/, async (msg) => {
@@ -153,7 +149,7 @@ setInterval(async () => {
                 bot.sendMessage(user.uid, `💎 **ДЕПОЗИТ ЗАЧИСЛЕН!**\n+${val} TON`).catch(()=>{});
             }
         }
-    } catch (err) { /* Игнорим ошибки сети */ }
+    } catch (err) {}
 }, 15000);
 
 // ==========================================
@@ -168,17 +164,22 @@ app.post('/api/sync', async (req, res) => {
     } catch (e) { res.json({ balance: 0 }); }
 });
 
+app.post('/api/leaderboard', async (req, res) => {
+    try {
+        const tops = await User.find().sort({ balance: -1 }).limit(10);
+        res.json(tops.map(u => ({ uid: u.uid.substring(0, 3) + "***" + u.uid.substring(u.uid.length - 2), balance: u.balance })));
+    } catch (e) { res.json([]); }
+});
+
 app.post('/api/promo', async (req, res) => {
     try {
         const { uid, promo } = req.body; const p = promo?.toUpperCase();
         const user = await User.findOne({ uid: uid.toString() });
         if (!user) return res.json({ err: "Ошибка профиля" });
-        
         const pr = await Promo.findOne({ code: p });
         if (!pr) return res.json({ err: "❌ Неверный промокод!" });
         if (user.used_promos.includes(p)) return res.json({ err: "⚠️ Вы уже использовали этот код!" });
-        if (pr.usedCount >= pr.limit) return res.json({ err: "🚫 Лимит активаций исчерпан!" });
-        
+        if (pr.usedCount >= pr.limit) return res.json({ err: "🚫 Лимит исчерпан!" });
         user.balance += pr.value; user.used_promos.push(p); await user.save();
         pr.usedCount += 1; await pr.save(); 
         res.json({ msg: `🎁 Начислено +${pr.value} TON.` });
@@ -189,12 +190,10 @@ app.post('/api/spin', async (req, res) => {
     try {
         const { uid, bet } = req.body; const user = await User.findOne({ uid: uid.toString() });
         if (!user || user.balance < bet || bet < SETTINGS.minBet) return res.json({ err: "Мало TON!" });
-        
         user.balance -= bet;
         const items = ['🍒','🔔','💎','7️⃣','🍋'];
         let result = [items[Math.floor(Math.random()*5)], items[Math.floor(Math.random()*5)], items[Math.floor(Math.random()*5)]];
         if (Math.random() < SETTINGS.winChance) result = ['7️⃣','7️⃣','7️⃣'];
-        
         const isWin = result[0] === result[1] && result[1] === result[2], winSum = isWin ? bet * SETTINGS.multiplier : 0;
         user.balance += winSum; user.spins++; if(isWin) user.wins++; await user.save();
         res.json({ result, winSum, balance: parseFloat(user.balance.toFixed(2)) });
@@ -224,48 +223,51 @@ app.get('/', (req, res) => {
     <style>
         :root { --gold: #FFD700; --dark: #000; } 
         body { margin: 0; font-family: sans-serif; text-align: center; color: #fff; background-color: #000; overflow: hidden; user-select: none; position: relative; } 
-        /* ТЕПЕРЬ ТЕМНАЯ ПОДКЛАДКА ПОВЕРХ ВИДЕО, ЧТОБЫ ТЕКСТ БЫЛ ЧИТАЕМЫМ */
-        body::before { content: ""; position: fixed; inset: 0; background: rgba(0,0,0,0.4); z-index: -1; } 
-        
-        /* СТИЛЬ ДЛЯ ВИДЕО-ФОНА */
+        body::before { content: ""; position: fixed; inset: 0; background: rgba(0,0,0,0.5); z-index: -1; } 
         .back-video { position: fixed; right: 0; bottom: 0; min-width: 100%; min-height: 100%; z-index: -2; object-fit: cover; }
-
-        .nav { display: flex; background: rgba(0,0,0,0.8); border-bottom: 2px solid var(--gold); } 
-        .tab { flex: 1; padding: 15px 5px; font-size: 12px; font-weight: 800; color: #888; cursor: pointer; transition: 0.3s; } 
+        .nav { display: flex; background: rgba(0,0,0,0.9); border-bottom: 2px solid var(--gold); } 
+        .tab { flex: 1; padding: 15px 2px; font-size: 11px; font-weight: 800; color: #888; cursor: pointer; transition: 0.3s; } 
         .tab.active { color: var(--gold); border-bottom: 3px solid var(--gold); } 
         .page { display: none; padding: 20px; height: 85vh; overflow-y: auto; box-sizing: border-box; animation: fadeIn 0.3s ease; } 
         .page.active { display: block; } 
         @keyframes fadeIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } } 
-        .card { background: rgba(20,20,25,0.7); border: 1px solid rgba(255,215,0,0.2); padding: 20px; margin-bottom: 20px; border-radius: 20px; backdrop-filter: blur(10px); } 
-        .bal-val { font-size: 42px; color: var(--gold); font-weight: 900; } 
+        .card { background: rgba(20,20,25,0.75); border: 1px solid rgba(255,215,0,0.2); padding: 20px; margin-bottom: 20px; border-radius: 20px; backdrop-filter: blur(12px); box-shadow: 0 4px 15px rgba(0,0,0,0.5); } 
+        .bal-val { font-size: 42px; color: var(--gold); font-weight: 900; text-shadow: 0 0 10px rgba(255,215,0,0.5); } 
         .reel-cont { display: flex; justify-content: center; gap: 12px; margin: 30px 0; } 
-        .reel { width: 85px; height: 110px; background: #111; border: 3px solid var(--gold); border-radius: 15px; overflow: hidden; position: relative; } 
+        .reel { width: 85px; height: 110px; background: linear-gradient(180deg, #0a0a0a 0%, #1a1a1a 50%, #0a0a0a 100%); border: 3px solid var(--gold); border-radius: 15px; overflow: hidden; position: relative; box-shadow: inset 0 0 15px rgba(0,0,0,0.9); } 
         .strip { width: 100%; position: absolute; top: 0; left: 0; will-change: transform; } 
-        .sym { height: 110px; display: flex; align-items: center; justify-content: center; font-size: 55px; } 
+        .sym { height: 110px; display: flex; align-items: center; justify-content: center; font-size: 55px; filter: drop-shadow(0 2px 5px rgba(0,0,0,0.5)); } 
         .inputs { display: flex; justify-content: center; gap: 10px; margin-bottom: 20px; } 
-        .bet-btn { background: #333; color: #fff; border: 1px solid #555; border-radius: 10px; padding: 10px 15px; width: 45px; font-size: 20px; cursor: pointer; } 
-        input { width: 100%; padding: 10px; background: #000; border: 2px solid var(--gold); color: var(--gold); font-size: 18px; font-weight: bold; text-align: center; border-radius: 10px; box-sizing: border-box; } 
-        .btn-main { width: 100%; padding: 18px; background: linear-gradient(45deg, #FFD700, #FFA500); color: #000; border: none; font-size: 20px; font-weight: 900; border-radius: 15px; box-shadow: 0 5px 20px rgba(255,215,0,0.5); cursor: pointer; } 
-        .btn-main:active { transform: scale(0.95); }
-        .copy-box { background: #000; border: 1px dashed var(--gold); padding: 15px; border-radius: 10px; font-size: 12px; color: var(--gold); word-break: break-all; margin-top: 10px; }
+        .bet-btn { background: #222; color: #fff; border: 1px solid var(--gold); border-radius: 10px; padding: 10px 15px; width: 50px; font-size: 22px; font-weight: bold; cursor: pointer; transition: 0.2s; } 
+        .bet-btn:active { background: var(--gold); color: #000; }
+        input { width: 100%; padding: 12px; background: #000; border: 2px solid var(--gold); color: var(--gold); font-size: 18px; font-weight: bold; text-align: center; border-radius: 10px; box-sizing: border-box; outline: none; transition: 0.3s; } 
+        input:focus { box-shadow: 0 0 10px rgba(255,215,0,0.5); }
+        .btn-main { width: 100%; padding: 18px; background: linear-gradient(45deg, #FFD700, #FFA500); color: #000; border: none; font-size: 20px; font-weight: 900; border-radius: 15px; box-shadow: 0 5px 20px rgba(255,215,0,0.5); cursor: pointer; transition: 0.2s; text-transform: uppercase; } 
+        .btn-main:active { transform: scale(0.95); box-shadow: 0 2px 10px rgba(255,215,0,0.5); }
+        .btn-main:disabled { background: #555; color: #888; box-shadow: none; cursor: not-allowed; transform: none; }
+        .copy-box { background: rgba(0,0,0,0.6); border: 1px dashed var(--gold); padding: 15px; border-radius: 10px; font-size: 14px; color: var(--gold); word-break: break-all; margin-top: 10px; cursor: pointer; transition: 0.2s; }
+        .copy-box:active { background: rgba(255,215,0,0.2); }
+        .top-row { display: flex; justify-content: space-between; align-items: center; padding: 12px 10px; border-bottom: 1px solid rgba(255,215,0,0.1); font-size: 16px; }
+        .top-row:last-child { border-bottom: none; }
+        .top-rank { color: var(--gold); font-weight: 900; width: 40px; font-size: 18px; }
+        .top-uid { flex: 1; text-align: left; padding-left: 10px; color: #ddd; font-family: monospace; }
+        .top-bal { font-weight: bold; color: #fff; }
     </style>
 </head>
 <body>
-    <video autoplay loop muted playsinline class="back-video" id="bgVideo">
-        <source src="${CONFIG.BG_VIDEO}" type="video/mp4">
-    </video>
-
+    <video autoplay loop muted playsinline class="back-video"><source src="${CONFIG.BG_VIDEO}" type="video/mp4"></video>
     <audio id="bgm" loop src="${CONFIG.BGM_URL}"></audio>
     
     <div class="nav">
         <div class="tab active" onclick="sh(1)">🎰 ИГРА</div>
         <div class="tab" onclick="sh(2)">📈 ИНФО</div>
+        <div class="tab" onclick="sh(5)">🏆 ТОП</div>
         <div class="tab" onclick="sh(3)">💎 БАНК</div>
         <div class="tab" onclick="sh(4)">⚙️</div>
     </div>
     
     <div id="pg1" class="page active">
-        <div class="card"><div style="color:#aaa">Баланс (TON)</div><div id="bal" class="bal-val">0.00</div></div>
+        <div class="card"><div style="color:#aaa; font-size: 14px; font-weight: bold; text-transform: uppercase; letter-spacing: 1px;">Баланс TON</div><div id="bal" class="bal-val">0.00</div></div>
         <div class="reel-cont">
             <div class="reel"><div class="strip" id="s1"></div></div>
             <div class="reel"><div class="strip" id="s2"></div></div>
@@ -276,59 +278,72 @@ app.get('/', (req, res) => {
             <input type="number" id="bet" value="0.1" step="0.1" readonly>
             <button class="bet-btn" onclick="chBet(0.1)">+</button>
         </div>
-        <button class="btn-main" onclick="spin()" id="sBtn">КРУТИТЬ</button>
+        <button class="btn-main" onclick="spin()" id="sBtn">КРУТИТЬ РУЛЕТКУ</button>
     </div>
     
     <div id="pg2" class="page">
-        <div class="card"><h2 style="color:var(--gold)">СТАТИСТИКА</h2><p>Спинов: <b id="st-s">0</b></p><p>Побед: <b id="st-w" style="color:var(--gold)">0</b></p></div>
-        
-        <div class="card card_promo">
-            <h3 style="color:var(--gold);margin-top:0;">🎁 ПРОМОКОД</h3>
-            <input type="text" id="promo" placeholder="Введите код...">
-            <button class="btn-main" style="font-size:16px;padding:15px;margin-top:10px;" onclick="usePromo()">АКТИВИРОВАТЬ</button>
+        <div class="card"><h2 style="color:var(--gold); margin-top:0;">СТАТИСТИКА</h2><p style="font-size:18px;">Спинов: <b id="st-s">0</b></p><p style="font-size:18px;">Побед: <b id="st-w" style="color:var(--gold)">0</b></p></div>
+        <div class="card"><h3 style="color:var(--gold);margin-top:0;">🎁 ПРОМОКОД</h3><input type="text" id="promo" placeholder="Введите код..."><button class="btn-main" style="font-size:16px;padding:15px;margin-top:15px;" onclick="usePromo()">АКТИВИРОВАТЬ</button></div>
+    </div>
+
+    <div id="pg5" class="page">
+        <div class="card" style="padding: 10px;">
+            <h2 style="color:var(--gold); margin-top:10px; margin-bottom: 20px;">🏆 ТОП 10 ИГРОКОВ</h2>
+            <div id="leaderboard-list">Загрузка...</div>
         </div>
     </div>
     
     <div id="pg3" class="page">
-        <div class="card card_dep">
+        <div class="card">
             <h3 style="color:var(--gold);margin-top:0;">ДЕПОЗИТ TON</h3>
             <div class="copy-box" onclick="cp('${CONFIG.WALLET}')">${CONFIG.WALLET}</div>
-            <p style="font-weight:bold;margin-top:20px;">ID ДЛЯ КОММЕНТАРИЯ:</p>
-            <div class="copy-box" style="font-size:24px;text-align:center;" id="myid" onclick="cp(window.uid)">...</div>
+            <p style="font-weight:bold;margin-top:20px; color:#aaa;">ID ДЛЯ КОММЕНТАРИЯ:</p>
+            <div class="copy-box" style="font-size:26px;text-align:center;font-weight:bold;color:#fff;" id="myid" onclick="cp(window.uid)">...</div>
+            <p style="font-size: 12px; color: #ff4444; margin-top: 10px;">Обязательно укажи ID в комментарии к переводу!</p>
         </div>
-        <div class="card card_wd">
+        <div class="card">
             <h3 style="color:var(--gold);margin-top:0;">ВЫВОД</h3>
             <input type="text" id="wa" placeholder="Адрес кошелька">
-            <input type="number" id="wm" placeholder="Сумма" style="margin-top:10px;">
-            <button class="btn-main" style="font-size:16px;padding:15px;margin-top:10px;" onclick="wd()">ВЫВЕСТИ</button>
+            <input type="number" id="wm" placeholder="Сумма" style="margin-top:15px;">
+            <button class="btn-main" style="font-size:16px;padding:15px;margin-top:15px;" onclick="wd()">ОФОРМИТЬ ВЫВОД</button>
         </div>
     </div>
     
     <div id="pg4" class="page">
-        <div class="card"><h2 style="color:var(--gold);margin-top:0;">⚙️ НАСТРОЙКИ</h2>
-            <button class="btn-main" style="background:#222;color:#fff;" onclick="tm()" id="mBtn">🔇 Включить музыку</button>
-        </div>
+        <div class="card"><h2 style="color:var(--gold);margin-top:0;">⚙️ НАСТРОЙКИ</h2><button class="btn-main" style="background:rgba(255,255,255,0.1);color:#fff;border:1px solid var(--gold);box-shadow:none;" onclick="tm()" id="mBtn">🔇 Включить музыку</button></div>
     </div>
     
     <script>
         const tg = window.Telegram.WebApp; tg.expand(); window.uid = tg.initDataUnsafe?.user?.id?.toString() || "12345";
         const items = ['🍒','🔔','💎','7️⃣','🍋']; const bgm = document.getElementById('bgm');
         
-        function chBet(v) { let e = document.getElementById('bet'); let n = parseFloat(e.value) + v; if(n >= 0.01) e.value = n.toFixed(2); }
-        function cp(t) { let e = document.createElement('textarea'); e.value = t; document.body.appendChild(e); e.select(); document.execCommand('copy'); document.body.removeChild(e); tg.showAlert("✅ Скопировано!"); }
-        function tm() { if(bgm.paused) { bgm.play(); document.getElementById('mBtn').innerText = '🔊 Выключить музыку'; } else { bgm.pause(); document.getElementById('mBtn').innerText = '🔇 Включить музыку'; } }
+        function chBet(v) { let e = document.getElementById('bet'); let n = parseFloat(e.value) + v; if(n >= 0.01) e.value = n.toFixed(2); tg.HapticFeedback.selectionChanged(); }
+        function cp(t) { let e = document.createElement('textarea'); e.value = t; document.body.appendChild(e); e.select(); document.execCommand('copy'); document.body.removeChild(e); tg.showAlert("✅ Скопировано!"); tg.HapticFeedback.notificationOccurred('success'); }
+        function tm() { if(bgm.paused) { bgm.play(); document.getElementById('mBtn').innerText = '🔊 Выключить музыку'; } else { bgm.pause(); document.getElementById('mBtn').innerText = '🔇 Включить музыку'; } tg.HapticFeedback.impactOccurred('light'); }
         
-        // БРОНЕБОЙНОЕ ПЕРЕКЛЮЧЕНИЕ ВКЛАДОК
         function sh(n) {
             document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
             document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
-            
             document.getElementById('pg' + n).classList.add('active');
             document.querySelectorAll('.tab')[n - 1].classList.add('active');
-            
+            if(n === 5) loadLeaderboard();
+            tg.HapticFeedback.selectionChanged();
             sync();
         }
         
+        async function loadLeaderboard() {
+            try {
+                const res = await fetch('/api/leaderboard', { method: 'POST' });
+                const data = await res.json();
+                let html = '';
+                data.forEach((u, i) => {
+                    let rankIcon = i === 0 ? '🥇' : i === 1 ? '🥈' : i === 2 ? '🥉' : '#' + (i + 1);
+                    html += '<div class="top-row"><span class="top-rank">' + rankIcon + '</span><span class="top-uid">' + u.uid + '</span><span class="top-bal">' + u.balance.toFixed(2) + ' TON</span></div>';
+                });
+                document.getElementById('leaderboard-list').innerHTML = html || '<div style="color:#aaa; padding: 20px;">Пока пусто...</div>';
+            } catch(e) { document.getElementById('leaderboard-list').innerHTML = 'Ошибка загрузки'; }
+        }
+
         async function sync() {
             try {
                 const r = await fetch('/api/sync', { method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({uid: window.uid}) });
@@ -341,8 +356,10 @@ app.get('/', (req, res) => {
         
         async function usePromo() {
             const p = document.getElementById('promo').value.trim(); if(!p) return;
+            tg.HapticFeedback.impactOccurred('medium');
             const r = await fetch('/api/promo', { method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({uid: window.uid, promo: p}) });
             const d = await r.json(); tg.showAlert(d.msg || d.err); document.getElementById('promo').value = ''; sync();
+            if(d.msg) tg.HapticFeedback.notificationOccurred('success'); else tg.HapticFeedback.notificationOccurred('error');
         }
         
         function build() {
@@ -352,22 +369,33 @@ app.get('/', (req, res) => {
         async function spin() {
             let b = parseFloat(document.getElementById('bet').value), btn = document.getElementById('sBtn');
             const r = await fetch('/api/spin', { method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({uid: window.uid, bet: b}) });
-            const d = await r.json(); if(d.err) return tg.showAlert(d.err);
-            btn.disabled = true; tg.HapticFeedback.impactOccurred('heavy');
+            const d = await r.json(); if(d.err) { tg.HapticFeedback.notificationOccurred('error'); return tg.showAlert(d.err); }
+            
+            btn.disabled = true; btn.innerText = "КРУТИМ..."; tg.HapticFeedback.impactOccurred('heavy');
             
             [1, 2, 3].forEach(i => {
                 let s = document.getElementById('s' + i); s.style.transition = 'none'; s.style.transform = 'translateY(0)';
-        setTimeout(() => { s.lastElementChild.innerText = d.result[i - 1]; s.style.transition = 'transform ' + (2 + i * 0.5) + 's cubic-bezier(0.15,0.85,0.1,1)'; s.style.transform = 'translateY(-6490px)'; }, 50);
+                setTimeout(() => { 
+                    s.lastElementChild.innerText = d.result[i - 1]; 
+                    s.style.transition = 'transform ' + (2 + i * 0.5) + 's cubic-bezier(0.15,0.85,0.1,1)'; 
+                    s.style.transform = 'translateY(-6490px)'; 
+                    tg.HapticFeedback.impactOccurred('light');
+                }, 50 * i);
             });
             
-            setTimeout(() => { sync(); btn.disabled = false; if(d.winSum > 0) tg.showAlert("🎉 ВЫИГРЫШ: +" + d.winSum.toFixed(2) + " TON!"); }, 3500);
+            setTimeout(() => { 
+                sync(); btn.disabled = false; btn.innerText = "КРУТИТЬ РУЛЕТКУ"; 
+                if(d.winSum > 0) { tg.HapticFeedback.notificationOccurred('success'); tg.showAlert("🎉 ВЫИГРЫШ: +" + d.winSum.toFixed(2) + " TON!"); }
+            }, 3600);
         }
         
         async function wd() {
             let a = document.getElementById('wa').value, m = parseFloat(document.getElementById('wm').value);
-            if(!a || !m) return tg.showAlert("Заполни все!");
+            if(!a || !m) { tg.HapticFeedback.notificationOccurred('error'); return tg.showAlert("Заполни все поля!"); }
+            tg.HapticFeedback.impactOccurred('medium');
             const r = await fetch('/api/withdraw', { method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({uid: window.uid, amount: m, address: a}) });
             const d = await r.json(); tg.showAlert(d.err || d.msg); sync();
+            if(d.msg) tg.HapticFeedback.notificationOccurred('success'); else tg.HapticFeedback.notificationOccurred('error');
         }
         
         build(); sync();
