@@ -211,7 +211,7 @@ app.post('/api/withdraw', async (req, res) => {
 });
 
 // ==========================================
-// 🎨 ФРОНТЕНД
+// 🎨 ФРОНТЕНД (ИСПРАВЛЕННЫЕ КНОПКИ)
 // ==========================================
 app.get('/', (req, res) => {
     res.send(`<!DOCTYPE html>
@@ -239,19 +239,13 @@ app.get('/', (req, res) => {
         .sym { height: 110px; display: flex; align-items: center; justify-content: center; font-size: 55px; filter: drop-shadow(0 2px 5px rgba(0,0,0,0.5)); } 
         .inputs { display: flex; justify-content: center; gap: 10px; margin-bottom: 20px; } 
         .bet-btn { background: #222; color: #fff; border: 1px solid var(--gold); border-radius: 10px; padding: 10px 15px; width: 50px; font-size: 22px; font-weight: bold; cursor: pointer; transition: 0.2s; } 
-        .bet-btn:active { background: var(--gold); color: #000; }
         input { width: 100%; padding: 12px; background: #000; border: 2px solid var(--gold); color: var(--gold); font-size: 18px; font-weight: bold; text-align: center; border-radius: 10px; box-sizing: border-box; outline: none; transition: 0.3s; } 
-        input:focus { box-shadow: 0 0 10px rgba(255,215,0,0.5); }
         .btn-main { width: 100%; padding: 18px; background: linear-gradient(45deg, #FFD700, #FFA500); color: #000; border: none; font-size: 20px; font-weight: 900; border-radius: 15px; box-shadow: 0 5px 20px rgba(255,215,0,0.5); cursor: pointer; transition: 0.2s; text-transform: uppercase; } 
-        .btn-main:active { transform: scale(0.95); box-shadow: 0 2px 10px rgba(255,215,0,0.5); }
-        .btn-main:disabled { background: #555; color: #888; box-shadow: none; cursor: not-allowed; transform: none; }
-        .copy-box { background: rgba(0,0,0,0.6); border: 1px dashed var(--gold); padding: 15px; border-radius: 10px; font-size: 14px; color: var(--gold); word-break: break-all; margin-top: 10px; cursor: pointer; transition: 0.2s; }
-        .copy-box:active { background: rgba(255,215,0,0.2); }
-        .top-row { display: flex; justify-content: space-between; align-items: center; padding: 12px 10px; border-bottom: 1px solid rgba(255,215,0,0.1); font-size: 16px; }
-        .top-row:last-child { border-bottom: none; }
+        .btn-main:active { transform: scale(0.95); }
+        .copy-box { background: rgba(0,0,0,0.6); border: 1px dashed var(--gold); padding: 15px; border-radius: 10px; font-size: 14px; color: var(--gold); word-break: break-all; margin-top: 10px; cursor: pointer; }
+        .top-row { display: flex; justify-content: space-between; align-items: center; padding: 12px 10px; border-bottom: 1px solid rgba(255,215,0,0.1); }
         .top-rank { color: var(--gold); font-weight: 900; width: 40px; font-size: 18px; }
-        .top-uid { flex: 1; text-align: left; padding-left: 10px; color: #ddd; font-family: monospace; }
-        .top-bal { font-weight: bold; color: #fff; }
+        .top-uid { flex: 1; text-align: left; padding-left: 10px; color: #ddd; }
     </style>
 </head>
 <body>
@@ -261,13 +255,13 @@ app.get('/', (req, res) => {
     <div class="nav">
         <div class="tab active" onclick="sh(1)">🎰 ИГРА</div>
         <div class="tab" onclick="sh(2)">📈 ИНФО</div>
-        <div class="tab" onclick="sh(5)">🏆 ТОП</div>
-        <div class="tab" onclick="sh(3)">💎 БАНК</div>
-        <div class="tab" onclick="sh(4)">⚙️</div>
+        <div class="tab" onclick="sh(3)">🏆 ТОП</div>
+        <div class="tab" onclick="sh(4)">💎 БАНК</div>
+        <div class="tab" onclick="sh(5)">⚙️</div>
     </div>
     
     <div id="pg1" class="page active">
-        <div class="card"><div style="color:#aaa; font-size: 14px; font-weight: bold; text-transform: uppercase; letter-spacing: 1px;">Баланс TON</div><div id="bal" class="bal-val">0.00</div></div>
+        <div class="card"><div>Баланс TON</div><div id="bal" class="bal-val">0.00</div></div>
         <div class="reel-cont">
             <div class="reel"><div class="strip" id="s1"></div></div>
             <div class="reel"><div class="strip" id="s2"></div></div>
@@ -278,39 +272,38 @@ app.get('/', (req, res) => {
             <input type="number" id="bet" value="0.1" step="0.1" readonly>
             <button class="bet-btn" onclick="chBet(0.1)">+</button>
         </div>
-        <button class="btn-main" onclick="spin()" id="sBtn">КРУТИТЬ РУЛЕТКУ</button>
+        <button class="btn-main" onclick="spin()" id="sBtn">КРУТИТЬ</button>
     </div>
     
     <div id="pg2" class="page">
-        <div class="card"><h2 style="color:var(--gold); margin-top:0;">СТАТИСТИКА</h2><p style="font-size:18px;">Спинов: <b id="st-s">0</b></p><p style="font-size:18px;">Побед: <b id="st-w" style="color:var(--gold)">0</b></p></div>
-        <div class="card"><h3 style="color:var(--gold);margin-top:0;">🎁 ПРОМОКОД</h3><input type="text" id="promo" placeholder="Введите код..."><button class="btn-main" style="font-size:16px;padding:15px;margin-top:15px;" onclick="usePromo()">АКТИВИРОВАТЬ</button></div>
+        <div class="card"><h2>СТАТИСТИКА</h2><p>Спинов: <b id="st-s">0</b></p><p>Побед: <b id="st-w" style="color:var(--gold)">0</b></p></div>
+        <div class="card"><h3>🎁 ПРОМОКОД</h3><input type="text" id="promo" placeholder="Код..."><button class="btn-main" style="margin-top:15px;" onclick="usePromo()">АКТИВИРОВАТЬ</button></div>
     </div>
 
-    <div id="pg5" class="page">
-        <div class="card" style="padding: 10px;">
-            <h2 style="color:var(--gold); margin-top:10px; margin-bottom: 20px;">🏆 ТОП 10 ИГРОКОВ</h2>
+    <div id="pg3" class="page">
+        <div class="card">
+            <h2 style="color:var(--gold)">🏆 ТОП 10</h2>
             <div id="leaderboard-list">Загрузка...</div>
         </div>
     </div>
     
-    <div id="pg3" class="page">
+    <div id="pg4" class="page">
         <div class="card">
-            <h3 style="color:var(--gold);margin-top:0;">ДЕПОЗИТ TON</h3>
+            <h3>ДЕПОЗИТ TON</h3>
             <div class="copy-box" onclick="cp('${CONFIG.WALLET}')">${CONFIG.WALLET}</div>
-            <p style="font-weight:bold;margin-top:20px; color:#aaa;">ID ДЛЯ КОММЕНТАРИЯ:</p>
-            <div class="copy-box" style="font-size:26px;text-align:center;font-weight:bold;color:#fff;" id="myid" onclick="cp(window.uid)">...</div>
-            <p style="font-size: 12px; color: #ff4444; margin-top: 10px;">Обязательно укажи ID в комментарии к переводу!</p>
+            <p>ID ДЛЯ КОММЕНТАРИЯ:</p>
+            <div class="copy-box" style="font-size:26px;text-align:center;" id="myid" onclick="cp(window.uid)">...</div>
         </div>
         <div class="card">
-            <h3 style="color:var(--gold);margin-top:0;">ВЫВОД</h3>
+            <h3>ВЫВОД</h3>
             <input type="text" id="wa" placeholder="Адрес кошелька">
             <input type="number" id="wm" placeholder="Сумма" style="margin-top:15px;">
-            <button class="btn-main" style="font-size:16px;padding:15px;margin-top:15px;" onclick="wd()">ОФОРМИТЬ ВЫВОД</button>
+            <button class="btn-main" onclick="wd()">ВЫВЕСТИ</button>
         </div>
     </div>
     
-    <div id="pg4" class="page">
-        <div class="card"><h2 style="color:var(--gold);margin-top:0;">⚙️ НАСТРОЙКИ</h2><button class="btn-main" style="background:rgba(255,255,255,0.1);color:#fff;border:1px solid var(--gold);box-shadow:none;" onclick="tm()" id="mBtn">🔇 Включить музыку</button></div>
+    <div id="pg5" class="page">
+        <div class="card"><h2>⚙️ НАСТРОЙКИ</h2><button class="btn-main" onclick="tm()" id="mBtn">🔇 Включить музыку</button></div>
     </div>
     
     <script>
@@ -318,15 +311,15 @@ app.get('/', (req, res) => {
         const items = ['🍒','🔔','💎','7️⃣','🍋']; const bgm = document.getElementById('bgm');
         
         function chBet(v) { let e = document.getElementById('bet'); let n = parseFloat(e.value) + v; if(n >= 0.01) e.value = n.toFixed(2); tg.HapticFeedback.selectionChanged(); }
-        function cp(t) { let e = document.createElement('textarea'); e.value = t; document.body.appendChild(e); e.select(); document.execCommand('copy'); document.body.removeChild(e); tg.showAlert("✅ Скопировано!"); tg.HapticFeedback.notificationOccurred('success'); }
-        function tm() { if(bgm.paused) { bgm.play(); document.getElementById('mBtn').innerText = '🔊 Выключить музыку'; } else { bgm.pause(); document.getElementById('mBtn').innerText = '🔇 Включить музыку'; } tg.HapticFeedback.impactOccurred('light'); }
+        function cp(t) { let e = document.createElement('textarea'); e.value = t; document.body.appendChild(e); e.select(); document.execCommand('copy'); document.body.removeChild(e); tg.showAlert("✅ Скопировано!"); }
+        function tm() { if(bgm.paused) { bgm.play(); document.getElementById('mBtn').innerText = '🔊 Выключить музыку'; } else { bgm.pause(); document.getElementById('mBtn').innerText = '🔇 Включить музыку'; } }
         
         function sh(n) {
             document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
             document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
             document.getElementById('pg' + n).classList.add('active');
             document.querySelectorAll('.tab')[n - 1].classList.add('active');
-            if(n === 5) loadLeaderboard();
+            if(n === 3) loadLeaderboard();
             tg.HapticFeedback.selectionChanged();
             sync();
         }
@@ -335,13 +328,13 @@ app.get('/', (req, res) => {
             try {
                 const res = await fetch('/api/leaderboard', { method: 'POST' });
                 const data = await res.json();
-                let html = '';
+                let h = '';
                 data.forEach((u, i) => {
-                    let rankIcon = i === 0 ? '🥇' : i === 1 ? '🥈' : i === 2 ? '🥉' : '#' + (i + 1);
-                    html += '<div class="top-row"><span class="top-rank">' + rankIcon + '</span><span class="top-uid">' + u.uid + '</span><span class="top-bal">' + u.balance.toFixed(2) + ' TON</span></div>';
+                    let r = i === 0 ? '🥇' : i === 1 ? '🥈' : i === 2 ? '🥉' : '#' + (i + 1);
+                    h += '<div class="top-row"><span class="top-rank">'+r+'</span><span class="top-uid">'+u.uid+'</span><span>'+u.balance.toFixed(2)+' T</span></div>';
                 });
-                document.getElementById('leaderboard-list').innerHTML = html || '<div style="color:#aaa; padding: 20px;">Пока пусто...</div>';
-            } catch(e) { document.getElementById('leaderboard-list').innerHTML = 'Ошибка загрузки'; }
+                document.getElementById('leaderboard-list').innerHTML = h || 'Пусто';
+            } catch(e) { document.getElementById('leaderboard-list').innerHTML = 'Ошибка'; }
         }
 
         async function sync() {
@@ -356,10 +349,8 @@ app.get('/', (req, res) => {
         
         async function usePromo() {
             const p = document.getElementById('promo').value.trim(); if(!p) return;
-            tg.HapticFeedback.impactOccurred('medium');
             const r = await fetch('/api/promo', { method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({uid: window.uid, promo: p}) });
             const d = await r.json(); tg.showAlert(d.msg || d.err); document.getElementById('promo').value = ''; sync();
-            if(d.msg) tg.HapticFeedback.notificationOccurred('success'); else tg.HapticFeedback.notificationOccurred('error');
         }
         
         function build() {
@@ -369,33 +360,18 @@ app.get('/', (req, res) => {
         async function spin() {
             let b = parseFloat(document.getElementById('bet').value), btn = document.getElementById('sBtn');
             const r = await fetch('/api/spin', { method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({uid: window.uid, bet: b}) });
-            const d = await r.json(); if(d.err) { tg.HapticFeedback.notificationOccurred('error'); return tg.showAlert(d.err); }
-            
-            btn.disabled = true; btn.innerText = "КРУТИМ..."; tg.HapticFeedback.impactOccurred('heavy');
-            
+            const d = await r.json(); if(d.err) return tg.showAlert(d.err);
+            btn.disabled = true; tg.HapticFeedback.impactOccurred('heavy');
             [1, 2, 3].forEach(i => {
                 let s = document.getElementById('s' + i); s.style.transition = 'none'; s.style.transform = 'translateY(0)';
-                setTimeout(() => { 
-                    s.lastElementChild.innerText = d.result[i - 1]; 
-                    s.style.transition = 'transform ' + (2 + i * 0.5) + 's cubic-bezier(0.15,0.85,0.1,1)'; 
-                    s.style.transform = 'translateY(-6490px)'; 
-                    tg.HapticFeedback.impactOccurred('light');
-                }, 50 * i);
+                setTimeout(() => { s.lastElementChild.innerText = d.result[i-1]; s.style.transition = 'transform '+(2+i*0.5)+'s cubic-bezier(0.15,0.85,0.1,1)'; s.style.transform = 'translateY(-6490px)'; }, 50);
             });
-            
-            setTimeout(() => { 
-                sync(); btn.disabled = false; btn.innerText = "КРУТИТЬ РУЛЕТКУ"; 
-                if(d.winSum > 0) { tg.HapticFeedback.notificationOccurred('success'); tg.showAlert("🎉 ВЫИГРЫШ: +" + d.winSum.toFixed(2) + " TON!"); }
-            }, 3600);
+            setTimeout(() => { sync(); btn.disabled = false; if(d.winSum > 0) tg.showAlert("🎉 +" + d.winSum.toFixed(2) + " TON!"); }, 3600);
         }
         
         async function wd() {
-            let a = document.getElementById('wa').value, m = parseFloat(document.getElementById('wm').value);
-            if(!a || !m) { tg.HapticFeedback.notificationOccurred('error'); return tg.showAlert("Заполни все поля!"); }
-            tg.HapticFeedback.impactOccurred('medium');
-            const r = await fetch('/api/withdraw', { method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({uid: window.uid, amount: m, address: a}) });
+            const r = await fetch('/api/withdraw', { method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({uid: window.uid, amount: parseFloat(document.getElementById('wm').value), address: document.getElementById('wa').value}) });
             const d = await r.json(); tg.showAlert(d.err || d.msg); sync();
-            if(d.msg) tg.HapticFeedback.notificationOccurred('success'); else tg.HapticFeedback.notificationOccurred('error');
         }
         
         build(); sync();
@@ -404,4 +380,4 @@ app.get('/', (req, res) => {
 </html>`);
 });
 
-app.listen(PORT, '0.0.0.0', () => console.log(`🚀 СЕРВЕР VIP TON ЗАПУЩЕН НА ПОРТУ ${PORT}!`));
+app.listen(PORT, '0.0.0.0', () => console.log(`🚀 READY ON PORT ${PORT}`));
