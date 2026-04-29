@@ -224,7 +224,7 @@ app.get('/', (req, res) => {
         :root { --gold: #FFD700; --dark: #000; } 
         body { margin: 0; font-family: sans-serif; text-align: center; color: #fff; background-color: #000; overflow: hidden; user-select: none; position: relative; } 
         body::before { content: ""; position: fixed; inset: 0; background: rgba(0,0,0,0.5); z-index: -1; } 
-        .back-video { position: fixed; right: 0; bottom: 0; min-width: 100%; min-height: 100%; z-index: -2; object-fit: cover; }
+        .back-video { position: fixed; top: 50%; left: 50%; min-width: 100%; min-height: 100%; z-index: -2; transform: translate(-50%, -50%); object-fit: cover; }
         .nav { display: flex; background: rgba(0,0,0,0.9); border-bottom: 2px solid var(--gold); } 
         .tab { flex: 1; padding: 15px 2px; font-size: 11px; font-weight: 800; color: #888; cursor: pointer; transition: 0.3s; } 
         .tab.active { color: var(--gold); border-bottom: 3px solid var(--gold); } 
