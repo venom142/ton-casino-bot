@@ -32,7 +32,7 @@ const CONFIG = {
     WALLET: "UQDoTj0hCwJbI-9fziRCyUZzO2XHmtcDzuiAiGjxG21G3dIX", 
     TON_KEY: "fe9429836fd2dfdb009421c6dc389840c9cdadca238477b4e2910250e11fa6d3", 
     START_BALANCE: 0.10, 
-    BG_VIDEO: "https://files.catbox.moe/bvbg1g.mp4", 
+    BG_VIDEO: "https://raw.githubusercontent.com/venom142/ton-casino-bot/main/gemini_generated_video_9fc75b5d.mp4", 
     BGM_URL: "https://files.catbox.moe/ef3c37.mp3"
 };
 
