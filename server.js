@@ -259,8 +259,7 @@ app.post('/api/withdraw', async (req, res) => {
 // 🎨 ФРОНТЕНД (СЛОТЫ + КРАШ)
 // ==========================================
 app.get('/', (req, res) => {
-    const html = `
-    <!DOCTYPE html>
+    const html = `<!DOCTYPE html>
     <html lang="ru">
     <head>
         <meta charset="UTF-8">
@@ -343,11 +342,11 @@ app.get('/', (req, res) => {
                 </div>
                 <div class="crash-inputs">
                     <div class="input-box" style="flex-direction: column; align-items: flex-start; padding: 10px;">
-                        <span style="font-size:12px; color:#aaa;">Ставка (TON):</span>
+                        <span style="font-size:12px; color:#aaa;">Ставка:</span>
                         <input type="number" id="crashBet" value="0.1" step="0.1" style="width:100%; text-align:left;">
                     </div>
                     <div class="input-box" style="flex-direction: column; align-items: flex-start; padding: 10px;">
-                        <span style="font-size:12px; color:#aaa;">Авто-вывод (Икс):</span>
+                        <span style="font-size:12px; color:#aaa;">Икс:</span>
                         <input type="number" id="crashTarget" value="2.0" step="0.1" style="width:100%; text-align:left;">
                     </div>
                 </div>
@@ -447,7 +446,7 @@ app.get('/', (req, res) => {
 
                     let currentX = 1.00;
                     const interval = setInterval(() => {
-                        currentX += 0.01 + (currentX * 0.015); // Ракета ускоряется
+                        currentX += 0.01 + (currentX * 0.015);
                         
                         if (currentX >= Math.min(data.crashPoint, target)) {
                             clearInterval(interval);
@@ -476,11 +475,8 @@ app.get('/', (req, res) => {
             }
 
             function showPromo() {
-                const p = prompt("Введите промокод:");
-                if(p) {
-                    fetch('/api/promo', { method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify({uid, promo: p}) })
-                    .then(r=>r.json()).then(d => { tg.showAlert(d.msg || d.err); updateData(); });
-                }
+                const p = prompt("Введите промо:");
+                if(p) fetch('/api/promo', { method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify({uid, promo: p}) }).then(r=>r.json()).then(d => { tg.showAlert(d.msg || d.err); updateData(); });
             }
             function showLeaderboard() {
                 fetch('/api/leaderboard', {method:'POST'}).then(r=>r.json()).then(d=>{
@@ -490,21 +486,17 @@ app.get('/', (req, res) => {
                 });
             }
             function withdraw() {
-                const a = prompt("Адрес кошелька TON:");
+                const a = prompt("Адрес TON:");
                 if(!a) return;
-                const am = prompt("Сумма вывода (TON):");
-                if(am) {
-                    fetch('/api/withdraw', { method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify({uid, amount: parseFloat(am), address: a}) })
-                    .then(r=>r.json()).then(d => { tg.showAlert(d.msg || d.err); updateData(); });
-                }
+                const am = prompt("Сумма:");
+                if(am) fetch('/api/withdraw', { method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify({uid, amount: parseFloat(am), address: a}) }).then(r=>r.json()).then(d => { tg.showAlert(d.msg || d.err); updateData(); });
             }
             
             setInterval(updateData, 10000);
             updateData();
         </script>
     </body>
-    </html>
-    `;
+    </html>`;
     res.send(html);
 });
 
