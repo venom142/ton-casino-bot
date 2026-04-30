@@ -184,7 +184,25 @@ setInterval(async () => {
 // 🌐 API ИГРЫ
 // ==========================================
 app.use(express.json());
-
+// --- УМНЫЕ УВЕДОМЛЕНИЯ ---
+app.use('/api', async (req, res, next) => {
+    if (req.body && req.body.uid) await User.updateOne({uid: req.body.uid.toString()}, {last_active: Date.now(), notified_inactive: false}, {strict: false});
+    next();
+});
+setInterval(async () => {
+    try {
+        const timeLimit = new Date(Date.now() - 48 * 60 * 60 * 1000); // 48 часов
+        const users = await User.find({ last_active: { $lt: timeLimit }, notified_inactive: false });
+        for (let u of users) {
+            bot.sendMessage(u.uid, "💎 Бро, твой баланс скучает!\nЗалетай в VIP ЗАЛ и сделай свой победный спин! 🎰", { 
+                reply_markup: { inline_keyboard: [[{ text: "🚀 ВЕРНУТЬСЯ В ИГРУ", web_app: { url: process.env.APP_URL || "https://google.com" } }]] }
+            }).catch(()=>{});
+            await User.updateOne({uid: u.uid}, {notified_inactive: true}, {strict: false});
+        }
+    } catch(e) {}
+}, 60 * 60 * 1000); // Проверка каждый час
+// -------------------------
+            
 app.post('/api/sync', async (req, res) => {
     try {
         const user = await User.findOne({ uid: req.body.uid?.toString() });
