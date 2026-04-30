@@ -504,7 +504,7 @@ app.get('/', (req, res) => {
         </script>
     </body>
     </html>
-    \`;
+    `;
     res.send(html);
 });
 
