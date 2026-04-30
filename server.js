@@ -22,7 +22,6 @@ if (!process.env.BOT_TOKEN || !process.env.MONGO_URI) {
 }
 
 const app = express();
-const PORT = process.env.PORT || 10000;
 
 // ==========================================
 // ⚙️ НАСТРОЙКИ КАЗИНО
