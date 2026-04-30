@@ -255,175 +255,258 @@ app.post('/api/withdraw', async (req, res) => {
         res.json({ msg: "Заявка принята!" });
     } catch (e) { res.json({ err: "Ошибка" }); }
 });
-
 // ==========================================
-// 🎨 ФРОНТЕНД (ИСПРАВЛЕННЫЕ КНОПКИ)
+// 🎨 ФРОНТЕНД (СЛОТЫ + КРАШ)
 // ==========================================
 app.get('/', (req, res) => {
-    res.send(`<!DOCTYPE html>
-<html lang="ru">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no">
-    <script src="https://telegram.org/js/telegram-web-app.js"></script>
-    <style>
-        :root { --gold: #FFD700; --dark: #000; } 
-        body { margin: 0; font-family: sans-serif; text-align: center; color: #fff; background-color: #000; overflow: hidden; user-select: none; position: relative; } 
-        body::before { content: ""; position: fixed; inset: 0; background: rgba(0,0,0,0.5); z-index: -1; } 
-        .back-video { position: fixed; top: 50%; left: 50%; min-width: 100%; min-height: 100%; z-index: -2; transform: translate(-50%, -50%); object-fit: cover; }
-        .nav { display: flex; background: rgba(0,0,0,0.9); border-bottom: 2px solid var(--gold); } 
-        .tab { flex: 1; padding: 15px 2px; font-size: 11px; font-weight: 800; color: #888; cursor: pointer; transition: 0.3s; } 
-        .tab.active { color: var(--gold); border-bottom: 3px solid var(--gold); } 
-        .page { display: none; padding: 20px; height: 85vh; overflow-y: auto; box-sizing: border-box; animation: fadeIn 0.3s ease; } 
-        .page.active { display: block; } 
-        @keyframes fadeIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } } 
-        .card { background: rgba(20,20,25,0.75); border: 1px solid rgba(255,215,0,0.2); padding: 20px; margin-bottom: 20px; border-radius: 20px; backdrop-filter: blur(12px); box-shadow: 0 4px 15px rgba(0,0,0,0.5); } 
-        .bal-val { font-size: 42px; color: var(--gold); font-weight: 900; text-shadow: 0 0 10px rgba(255,215,0,0.5); } 
-        .reel-cont { display: flex; justify-content: center; gap: 12px; margin: 30px 0; } 
-        .reel { width: 85px; height: 110px; background: linear-gradient(180deg, #0a0a0a 0%, #1a1a1a 50%, #0a0a0a 100%); border: 3px solid var(--gold); border-radius: 15px; overflow: hidden; position: relative; box-shadow: inset 0 0 15px rgba(0,0,0,0.9); } 
-        .strip { width: 100%; position: absolute; top: 0; left: 0; will-change: transform; } 
-        .sym { height: 110px; display: flex; align-items: center; justify-content: center; font-size: 55px; filter: drop-shadow(0 2px 5px rgba(0,0,0,0.5)); } 
-        .inputs { display: flex; justify-content: center; gap: 10px; margin-bottom: 20px; } 
-        .bet-btn { background: #222; color: #fff; border: 1px solid var(--gold); border-radius: 10px; padding: 10px 15px; width: 50px; font-size: 22px; font-weight: bold; cursor: pointer; transition: 0.2s; } 
-        input { width: 100%; padding: 12px; background: #000; border: 2px solid var(--gold); color: var(--gold); font-size: 18px; font-weight: bold; text-align: center; border-radius: 10px; box-sizing: border-box; outline: none; transition: 0.3s; } 
-        .btn-main { width: 100%; padding: 18px; background: linear-gradient(45deg, #FFD700, #FFA500); color: #000; border: none; font-size: 20px; font-weight: 900; border-radius: 15px; box-shadow: 0 5px 20px rgba(255,215,0,0.5); cursor: pointer; transition: 0.2s; text-transform: uppercase; } 
-        .btn-main:active { transform: scale(0.95); }
-        .copy-box { background: rgba(0,0,0,0.6); border: 1px dashed var(--gold); padding: 15px; border-radius: 10px; font-size: 14px; color: var(--gold); word-break: break-all; margin-top: 10px; cursor: pointer; }
-        .top-row { display: flex; justify-content: space-between; align-items: center; padding: 12px 10px; border-bottom: 1px solid rgba(255,215,0,0.1); }
-        .top-rank { color: var(--gold); font-weight: 900; width: 40px; font-size: 18px; }
-        .top-uid { flex: 1; text-align: left; padding-left: 10px; color: #ddd; }
-    </style>
-</head>
-<body>
-    <video autoplay loop muted playsinline class="back-video"><source src="${CONFIG.BG_VIDEO}" type="video/mp4"></video>
-    <audio id="bgm" loop src="${CONFIG.BGM_URL}"></audio>
-    
-    <div class="nav">
-        <div class="tab active" onclick="sh(1)">🎰 ИГРА</div>
-        <div class="tab" onclick="sh(2)">📈 ИНФО</div>
-        <div class="tab" onclick="sh(3)">🏆 ТОП</div>
-        <div class="tab" onclick="sh(4)">💎 БАНК</div>
-        <div class="tab" onclick="sh(5)">⚙️</div>
-    </div>
-    
-    <div id="pg1" class="page active">
-        <div class="card"><div>Баланс TON</div><div id="bal" class="bal-val">0.00</div></div>
-        <div class="reel-cont">
-            <div class="reel"><div class="strip" id="s1"></div></div>
-            <div class="reel"><div class="strip" id="s2"></div></div>
-            <div class="reel"><div class="strip" id="s3"></div></div>
-        </div>
-        <div class="inputs">
-            <button class="bet-btn" onclick="chBet(-0.1)">-</button>
-            <input type="number" id="bet" value="0.1" step="0.1" readonly>
-            <button class="bet-btn" onclick="chBet(0.1)">+</button>
-        </div>
-        <button class="btn-main" onclick="spin()" id="sBtn">КРУТИТЬ</button>
-    </div>
-    
-    <div id="pg2" class="page">
-        <div class="card"><h2>СТАТИСТИКА</h2><p>Спинов: <b id="st-s">0</b></p><p>Побед: <b id="st-w" style="color:var(--gold)">0</b></p></div>
-        <div class="card"><h3>🎁 ПРОМОКОД</h3><input type="text" id="promo" placeholder="Код..."><button class="btn-main" style="margin-top:15px;" onclick="usePromo()">АКТИВИРОВАТЬ</button></div>
-    </div>
+    const html = `
+    <!DOCTYPE html>
+    <html lang="ru">
+    <head>
+        <meta charset="UTF-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+        <title>TON Casino</title>
+        <script src="https://telegram.org/js/telegram-web-app.js"></script>
+        <style>
+            @import url('https://fonts.googleapis.com/css2?family=Montserrat:wght@800&display=swap');
+            body { margin: 0; padding: 0; background-color: #000; color: #fff; font-family: 'Montserrat', sans-serif; overflow: hidden; }
+            .back-video { position: fixed; top: 50%; left: 50%; min-width: 100%; min-height: 100%; z-index: -2; transform: translate(-50%, -50%); object-fit: cover; }
+            .overlay { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0, 0, 0, 0.6); z-index: -1; }
+            .container { display: flex; flex-direction: column; align-items: center; padding: 20px; height: 100vh; box-sizing: border-box; }
+            
+            .header { width: 100%; display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; }
+            .balance-box { background: rgba(255, 255, 255, 0.1); padding: 10px 20px; border-radius: 15px; border: 1px solid #00f0ff; box-shadow: 0 0 10px #00f0ff; }
+            .balance-val { font-size: 24px; color: #00f0ff; text-shadow: 0 0 5px #00f0ff; }
+            
+            .tabs { display: flex; gap: 10px; margin-bottom: 20px; }
+            .tab-btn { background: rgba(0,0,0,0.5); border: 2px solid #ff00ff; color: #fff; padding: 10px 20px; border-radius: 10px; font-weight: bold; width: 120px; transition: 0.2s; }
+            .tab-btn.active { background: #ff00ff; box-shadow: 0 0 15px #ff00ff; }
 
-    <div id="pg3" class="page">
-        <div class="card">
-            <h2 style="color:var(--gold)">🏆 ТОП 10</h2>
-            <div id="leaderboard-list">Загрузка...</div>
-        </div>
-    </div>
-    
-    <div id="pg4" class="page">
-        <div class="card">
-            <h3>ДЕПОЗИТ TON</h3>
-            <div class="copy-box" onclick="cp('${CONFIG.WALLET}')">${CONFIG.WALLET}</div>
-            <p>ID ДЛЯ КОММЕНТАРИЯ:</p>
-            <div class="copy-box" style="font-size:26px;text-align:center;" id="myid" onclick="cp(window.uid)">...</div>
-        </div>
-        <div class="card">
-            <h3>ВЫВОД</h3>
-            <input type="text" id="wa" placeholder="Адрес кошелька">
-            <input type="number" id="wm" placeholder="Сумма" style="margin-top:15px;">
-            <button class="btn-main" onclick="wd()">ВЫВЕСТИ</button>
-        </div>
-    </div>
-    
-    <div id="pg5" class="page">
-        <div class="card"><h2>⚙️ НАСТРОЙКИ</h2><button class="btn-main" onclick="tm()" id="mBtn">🔇 Включить музыку</button></div>
-    </div>
-    
-    <script>
-        const tg = window.Telegram.WebApp; tg.expand(); window.uid = tg.initDataUnsafe?.user?.id?.toString() || "12345";
-        const items = ['🍒','🔔','💎','7️⃣','🍋']; const bgm = document.getElementById('bgm');
+            .game-screen { display: none; flex-direction: column; align-items: center; width: 100%; }
+            .game-screen.active { display: flex; }
+
+            /* Слоты */
+            .slots-box { display: flex; gap: 10px; margin: 20px 0; background: rgba(0,0,0,0.8); padding: 20px; border-radius: 20px; border: 2px solid #00f0ff; box-shadow: inset 0 0 20px #00f0ff; }
+            .slot { font-size: 50px; width: 60px; text-align: center; }
+            
+            /* Краш */
+            .crash-box { width: 100%; height: 150px; background: rgba(0,0,0,0.8); border: 2px solid #ff00ff; border-radius: 20px; margin: 20px 0; display: flex; justify-content: center; align-items: center; flex-direction: column; box-shadow: inset 0 0 20px #ff00ff; }
+            .crash-mult { font-size: 48px; color: #fff; text-shadow: 0 0 10px #fff; }
+            .crash-msg { font-size: 16px; color: #aaa; margin-top: 10px; }
+            .crash-inputs { display: flex; gap: 10px; width: 100%; margin-bottom: 15px; }
+
+            .input-box { width: 100%; max-width: 300px; display: flex; justify-content: space-between; align-items: center; background: rgba(0,0,0,0.5); padding: 15px; border-radius: 15px; border: 1px solid #fff; margin-bottom: 15px; box-sizing: border-box; }
+            .input-box input { background: transparent; border: none; color: #fff; font-size: 20px; width: 80px; text-align: right; outline: none; font-weight: bold; }
+            
+            .btn-spin { background: linear-gradient(45deg, #00f0ff, #ff00ff); border: none; padding: 15px 40px; font-size: 24px; font-weight: bold; color: #fff; border-radius: 20px; box-shadow: 0 0 20px rgba(0,240,255,0.5); text-transform: uppercase; margin-bottom: 20px; width: 100%; max-width: 300px; }
+            .btn-spin:active { transform: scale(0.95); }
+            .btn-crash { background: linear-gradient(45deg, #ff00ff, #ff8c00); box-shadow: 0 0 20px rgba(255,140,0,0.5); }
+
+            .nav-buttons { display: flex; gap: 10px; width: 100%; justify-content: center; margin-top: auto; padding-bottom: 20px; }
+            .nav-btn { background: rgba(255,255,255,0.1); border: 1px solid #fff; color: #fff; padding: 10px; border-radius: 10px; width: 100%; font-size: 14px; }
+        </style>
+    </head>
+    <body>
+        <video class="back-video" autoplay loop muted playsinline>
+            <source src="https://raw.githubusercontent.com/venom142/ton-casino-bot/main/gemini_generated_video_9fc75b5d.mp4" type="video/mp4">
+        </video>
+        <div class="overlay"></div>
         
-        function chBet(v) { let e = document.getElementById('bet'); let n = parseFloat(e.value) + v; if(n >= 0.01) e.value = n.toFixed(2); tg.HapticFeedback.selectionChanged(); }
-        function cp(t) { let e = document.createElement('textarea'); e.value = t; document.body.appendChild(e); e.select(); document.execCommand('copy'); document.body.removeChild(e); tg.showAlert("✅ Скопировано!"); }
-        function tm() { if(bgm.paused) { bgm.play(); document.getElementById('mBtn').innerText = '🔊 Выключить музыку'; } else { bgm.pause(); document.getElementById('mBtn').innerText = '🔇 Включить музыку'; } }
-        
-        function sh(n) {
-            document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
-            document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
-            document.getElementById('pg' + n).classList.add('active');
-            document.querySelectorAll('.tab')[n - 1].classList.add('active');
-            if(n === 3) loadLeaderboard();
-            tg.HapticFeedback.selectionChanged();
-            sync();
-        }
-        
-        async function loadLeaderboard() {
-            try {
-                const res = await fetch('/api/leaderboard', { method: 'POST' });
-                const data = await res.json();
-                let h = '';
-                data.forEach((u, i) => {
-                    let r = i === 0 ? '🥇' : i === 1 ? '🥈' : i === 2 ? '🥉' : '#' + (i + 1);
-                    h += '<div class="top-row"><span class="top-rank">'+r+'</span><span class="top-uid">'+u.uid+'</span><span>'+u.balance.toFixed(2)+' T</span></div>';
+        <div class="container">
+            <div class="header">
+                <div>User: <span id="uid" style="color:#ff00ff;">...</span></div>
+                <div class="balance-box"><span class="balance-val" id="balance">0.00</span> TON</div>
+            </div>
+
+            <div class="tabs">
+                <button class="tab-btn active" onclick="switchTab('slots', this)">🎰 Слоты</button>
+                <button class="tab-btn" onclick="switchTab('crash', this)">🚀 Краш</button>
+            </div>
+
+            <div id="screen-slots" class="game-screen active">
+                <div class="slots-box">
+                    <div class="slot" id="s1">❓</div>
+                    <div class="slot" id="s2">❓</div>
+                    <div class="slot" id="s3">❓</div>
+                </div>
+                <div class="input-box">
+                    <span>Ставка (TON):</span>
+                    <input type="number" id="bet" value="0.1" step="0.1">
+                </div>
+                <button class="btn-spin" id="spinBtn" onclick="spin()">КРУТИТЬ</button>
+            </div>
+
+            <div id="screen-crash" class="game-screen">
+                <div class="crash-box">
+                    <div class="crash-mult" id="crashCounter">x1.00</div>
+                    <div class="crash-msg" id="crashMsg">Ждет запуска...</div>
+                </div>
+                <div class="crash-inputs">
+                    <div class="input-box" style="flex-direction: column; align-items: flex-start; padding: 10px;">
+                        <span style="font-size:12px; color:#aaa;">Ставка (TON):</span>
+                        <input type="number" id="crashBet" value="0.1" step="0.1" style="width:100%; text-align:left;">
+                    </div>
+                    <div class="input-box" style="flex-direction: column; align-items: flex-start; padding: 10px;">
+                        <span style="font-size:12px; color:#aaa;">Авто-вывод (Икс):</span>
+                        <input type="number" id="crashTarget" value="2.0" step="0.1" style="width:100%; text-align:left;">
+                    </div>
+                </div>
+                <button class="btn-spin btn-crash" id="crashBtn" onclick="playCrash()">ЗАПУСК 🚀</button>
+            </div>
+
+            <div class="nav-buttons">
+                <button class="nav-btn" onclick="showPromo()">🎁 Промо</button>
+                <button class="nav-btn" onclick="showLeaderboard()">🏆 Топ</button>
+                <button class="nav-btn" onclick="withdraw()">💸 Вывод</button>
+            </div>
+        </div>
+
+        <script>
+            const tg = window.Telegram.WebApp;
+            tg.expand();
+            const uid = tg.initDataUnsafe?.user?.id || "123456789";
+            document.getElementById('uid').innerText = uid.toString().slice(-4);
+            let currentBalance = 0;
+
+            function switchTab(tab, btn) {
+                document.getElementById('screen-slots').classList.remove('active');
+                document.getElementById('screen-crash').classList.remove('active');
+                document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+                
+                document.getElementById('screen-' + tab).classList.add('active');
+                btn.classList.add('active');
+            }
+
+            async function updateData() {
+                try {
+                    const res = await fetch('/api/sync', { method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify({uid}) });
+                    const data = await res.json();
+                    currentBalance = data.balance;
+                    document.getElementById('balance').innerText = currentBalance.toFixed(2);
+                } catch(e) {}
+            }
+
+            async function spin() {
+                const bet = parseFloat(document.getElementById('bet').value);
+                if(bet > currentBalance) return tg.showAlert("Недостаточно средств!");
+                const btn = document.getElementById('spinBtn');
+                btn.disabled = true; btn.innerText = "КРУТИМ...";
+                
+                let ticks = 0;
+                const items = ['🍒','🔔','💎','7️⃣','🍋'];
+                const anim = setInterval(() => {
+                    document.getElementById('s1').innerText = items[Math.floor(Math.random()*5)];
+                    document.getElementById('s2').innerText = items[Math.floor(Math.random()*5)];
+                    document.getElementById('s3').innerText = items[Math.floor(Math.random()*5)];
+                    ticks++;
+                }, 100);
+
+                try {
+                    const res = await fetch('/api/spin', { method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify({uid, bet}) });
+                    const data = await res.json();
+                    
+                    setTimeout(() => {
+                        clearInterval(anim);
+                        if(data.err) { tg.showAlert(data.err); }
+                        else {
+                            document.getElementById('s1').innerText = data.result[0];
+                            document.getElementById('s2').innerText = data.result[1];
+                            document.getElementById('s3').innerText = data.result[2];
+                            document.getElementById('balance').innerText = data.balance.toFixed(2);
+                            currentBalance = data.balance;
+                            if(data.winSum > 0) tg.showAlert("🎉 ВЫИГРЫШ: " + data.winSum + " TON");
+                        }
+                        btn.disabled = false; btn.innerText = "КРУТИТЬ";
+                    }, 1000);
+                } catch(e) { clearInterval(anim); btn.disabled = false; btn.innerText = "КРУТИТЬ"; }
+            }
+
+            async function playCrash() {
+                const bet = parseFloat(document.getElementById('crashBet').value);
+                const target = parseFloat(document.getElementById('crashTarget').value);
+                if(bet > currentBalance) return tg.showAlert("Недостаточно средств!");
+                if(target < 1.01) return tg.showAlert("Икс должен быть больше 1.01");
+                
+                const btn = document.getElementById('crashBtn');
+                const counter = document.getElementById('crashCounter');
+                const msg = document.getElementById('crashMsg');
+                
+                btn.disabled = true;
+                msg.innerText = "Ракета летит...";
+                msg.style.color = "#fff";
+                counter.style.color = "#fff";
+                
+                try {
+                    const res = await fetch('/api/crash', { method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify({uid, bet, target}) });
+                    const data = await res.json();
+                    
+                    if(data.err) { tg.showAlert(data.err); btn.disabled = false; return; }
+                    
+                    currentBalance -= bet;
+                    document.getElementById('balance').innerText = currentBalance.toFixed(2);
+
+                    let currentX = 1.00;
+                    const interval = setInterval(() => {
+                        currentX += 0.01 + (currentX * 0.015); // Ракета ускоряется
+                        
+                        if (currentX >= Math.min(data.crashPoint, target)) {
+                            clearInterval(interval);
+                            
+                            if (data.isWin) {
+                                counter.innerText = "x" + target.toFixed(2);
+                                counter.style.color = "#00ff00";
+                                msg.innerText = "✅ ВЫВЕЛ! +" + data.winSum.toFixed(2) + " TON";
+                                msg.style.color = "#00ff00";
+                            } else {
+                                counter.innerText = "x" + data.crashPoint.toFixed(2);
+                                counter.style.color = "#ff0000";
+                                msg.innerText = "💥 ВЗРЫВ!";
+                                msg.style.color = "#ff0000";
+                            }
+                            
+                            currentBalance = data.balance;
+                            document.getElementById('balance').innerText = currentBalance.toFixed(2);
+                            btn.disabled = false;
+                        } else {
+                            counter.innerText = "x" + currentX.toFixed(2);
+                        }
+                    }, 50);
+
+                } catch(e) { btn.disabled = false; }
+            }
+
+            function showPromo() {
+                const p = prompt("Введите промокод:");
+                if(p) {
+                    fetch('/api/promo', { method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify({uid, promo: p}) })
+                    .then(r=>r.json()).then(d => { tg.showAlert(d.msg || d.err); updateData(); });
+                }
+            }
+            function showLeaderboard() {
+                fetch('/api/leaderboard', {method:'POST'}).then(r=>r.json()).then(d=>{
+                    let t = "🏆 ТОП ИГРОКОВ 🏆\\n\\n";
+                    d.forEach((u,i) => t += (i+1) + ". ID " + u.uid + " - " + u.balance.toFixed(2) + " TON\\n");
+                    tg.showAlert(t);
                 });
-                document.getElementById('leaderboard-list').innerHTML = h || 'Пусто';
-            } catch(e) { document.getElementById('leaderboard-list').innerHTML = 'Ошибка'; }
-        }
-
-        async function sync() {
-            try {
-                const r = await fetch('/api/sync', { method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({uid: window.uid}) });
-                const d = await r.json();
-                document.getElementById('bal').innerText = (d.balance || 0).toFixed(2);
-                document.getElementById('myid').innerText = window.uid;
-                document.getElementById('st-s').innerText = d.spins || 0; document.getElementById('st-w').innerText = d.wins || 0;
-            } catch(e) {}
-        }
-        
-        async function usePromo() {
-            const p = document.getElementById('promo').value.trim(); if(!p) return;
-            const r = await fetch('/api/promo', { method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({uid: window.uid, promo: p}) });
-            const d = await r.json(); tg.showAlert(d.msg || d.err); document.getElementById('promo').value = ''; sync();
-        }
-        
-        function build() {
-            [1, 2, 3].forEach(i => { let s = document.getElementById('s' + i); s.innerHTML = ''; for(let j = 0; j < 60; j++) s.innerHTML += '<div class="sym">' + items[Math.floor(Math.random() * 5)] + '</div>'; });
-        }
-        
-        async function spin() {
-            let b = parseFloat(document.getElementById('bet').value), btn = document.getElementById('sBtn');
-            const r = await fetch('/api/spin', { method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({uid: window.uid, bet: b}) });
-            const d = await r.json(); if(d.err) return tg.showAlert(d.err);
-            btn.disabled = true; tg.HapticFeedback.impactOccurred('heavy');
-            [1, 2, 3].forEach(i => {
-                let s = document.getElementById('s' + i); s.style.transition = 'none'; s.style.transform = 'translateY(0)';
-                setTimeout(() => { s.lastElementChild.innerText = d.result[i-1]; s.style.transition = 'transform '+(2+i*0.5)+'s cubic-bezier(0.15,0.85,0.1,1)'; s.style.transform = 'translateY(-6490px)'; }, 50);
-            });
-            setTimeout(() => { sync(); btn.disabled = false; if(d.winSum > 0) tg.showAlert("🎉 +" + d.winSum.toFixed(2) + " TON!"); }, 3600);
-        }
-        
-        async function wd() {
-            const r = await fetch('/api/withdraw', { method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({uid: window.uid, amount: parseFloat(document.getElementById('wm').value), address: document.getElementById('wa').value}) });
-            const d = await r.json(); tg.showAlert(d.err || d.msg); sync();
-        }
-        
-        build(); sync();
-    </script>
-</body>
-</html>`);
+            }
+            function withdraw() {
+                const a = prompt("Адрес кошелька TON:");
+                if(!a) return;
+                const am = prompt("Сумма вывода (TON):");
+                if(am) {
+                    fetch('/api/withdraw', { method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify({uid, amount: parseFloat(am), address: a}) })
+                    .then(r=>r.json()).then(d => { tg.showAlert(d.msg || d.err); updateData(); });
+                }
+            }
+            
+            setInterval(updateData, 10000);
+            updateData();
+        </script>
+    </body>
+    </html>
+    \`;
+    res.send(html);
 });
 
-app.listen(PORT, '0.0.0.0', () => console.log(`🚀 READY ON PORT ${PORT}`));
+const PORT = process.env.PORT || 3000;
+app.listen(PORT, () => console.log('Сервер запущен на порту ' + PORT));
