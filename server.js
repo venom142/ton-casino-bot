@@ -59,7 +59,7 @@ const Promo = mongoose.model('Promo', {
 });
 
 // ==========================================
-// 🤖 ТЕЛЕГРАМ БОТ
+// 🤖 ТЕЛЕГРАМ БОТ (НОВАЯ АДМИНКА)
 // ==========================================
 const bot = new TelegramBot(process.env.BOT_TOKEN, { polling: true });
 const adminState = {};
@@ -76,12 +76,15 @@ bot.onText(/\/start/, async (msg) => {
 
 bot.on('callback_query', async (q) => {
     if (q.from.id !== CONFIG.ADMIN_ID) return;
+    
     if (q.data === "admin_menu") {
-        bot.sendMessage(q.message.chat.id, "👑 **Админка**", {
+        bot.sendMessage(q.message.chat.id, `👑 **Админка**\n\n⚙️ Текущий шанс: **${Math.round(SETTINGS.winChance * 100)}%**\n✖️ Текущий икс: **x${SETTINGS.multiplier}**`, {
+            parse_mode: 'Markdown',
             reply_markup: { inline_keyboard: [
-                [{ text: "📢 Рассылка", callback_data: "adm_msg" }, { text: "💰 Выдать баланс", callback_data: "adm_bal" }],
-                [{ text: "🎁 Создать ПРОМО", callback_data: "adm_promo_add" }, { text: "🗑 Удалить ПРОМО", callback_data: "adm_promo_del" }],
-                [{ text: "📊 Статистика", callback_data: "adm_stat" }]
+                [{ text: "📢 Рассылка", callback_data: "adm_msg" }, { text: "💰 Баланс", callback_data: "adm_bal" }],
+                [{ text: "🎁 Создать ПРОМО", callback_data: "adm_promo_add" }, { text: "🗑 Удал. ПРОМО", callback_data: "adm_promo_del" }],
+                [{ text: "⚙️ Изменить ШАНС", callback_data: "adm_set_chance" }, { text: "✖️ Изменить ИКС", callback_data: "adm_set_mult" }],
+                [{ text: "📊 Статистика", callback_data: "adm_stat" }, { text: "💀 ОБНУЛИТЬ ВСЕХ", callback_data: "adm_wipe_all" }]
             ]}
         });
     }
@@ -89,6 +92,20 @@ bot.on('callback_query', async (q) => {
         const users = await User.countDocuments(); const promos = await Promo.countDocuments();
         bot.sendMessage(q.message.chat.id, `📊 Игроков: **${users}**\n🎁 Активных промо: **${promos}**`, { parse_mode: 'Markdown' });
     }
+    if (q.data === "adm_set_chance") { adminState[q.from.id] = 'set_chance'; bot.sendMessage(q.message.chat.id, "Введите шанс от 0.01 до 1.00\n*(Например, 0.30 — это 30% на победу)*:"); }
+    if (q.data === "adm_set_mult") { adminState[q.from.id] = 'set_mult'; bot.sendMessage(q.message.chat.id, "Введите множитель выигрыша\n*(Например, 5, 10 или 2.5)*:"); }
+    
+    if (q.data === "adm_wipe_all") {
+        bot.sendMessage(q.message.chat.id, "⚠️ **ВНИМАНИЕ!** Это сбросит балансы, спины и победы **ВСЕМ ИГРОКАМ**! Уверены?", {
+            parse_mode: 'Markdown',
+            reply_markup: { inline_keyboard: [[{text: "✅ ДА, СНЕСТИ", callback_data: "adm_wipe_confirm"}, {text: "❌ ОТМЕНА", callback_data: "admin_menu"}]] }
+        });
+    }
+    if (q.data === "adm_wipe_confirm") {
+        await User.updateMany({}, { balance: CONFIG.START_BALANCE, spins: 0, wins: 0, used_promos: [] });
+        bot.sendMessage(q.message.chat.id, "✅ **БАЗА ДАННЫХ ОБНУЛЕНА!**", { parse_mode: 'Markdown' });
+    }
+
     if (q.data === "adm_msg") { adminState[q.from.id] = 'msg'; bot.sendMessage(q.message.chat.id, "Текст рассылки:"); }
     if (q.data === "adm_bal") { adminState[q.from.id] = 'bal_id'; bot.sendMessage(q.message.chat.id, "ID игрока:"); }
     if (q.data === "adm_promo_add") { adminState[q.from.id] = 'p_code'; bot.sendMessage(q.message.chat.id, "Название промокода:"); }
@@ -99,9 +116,20 @@ bot.on('message', async (msg) => {
     const s = adminState[msg.from.id]; if (!s || msg.text?.startsWith('/')) return;
     
     try {
-        if (s === 'msg') {
-            const users = await User.find(); 
-            bot.sendMessage(msg.chat.id, "⏳ Начинаю рассылку...");
+        if (s === 'set_chance') {
+            const val = parseFloat(msg.text);
+            if (!isNaN(val) && val > 0 && val <= 1) { SETTINGS.winChance = val; bot.sendMessage(msg.chat.id, `✅ Шанс победы теперь: **${Math.round(val * 100)}%**`, { parse_mode: 'Markdown' }); }
+            else bot.sendMessage(msg.chat.id, "❌ Ошибка! Нужно число от 0.01 до 1.00");
+            delete adminState[msg.from.id];
+        }
+        else if (s === 'set_mult') {
+            const val = parseFloat(msg.text);
+            if (!isNaN(val) && val >= 1) { SETTINGS.multiplier = val; bot.sendMessage(msg.chat.id, `✅ Множитель теперь: **x${val}**`, { parse_mode: 'Markdown' }); }
+            else bot.sendMessage(msg.chat.id, "❌ Ошибка! Нужно число больше 1");
+            delete adminState[msg.from.id];
+        }
+        else if (s === 'msg') {
+            const users = await User.find(); bot.sendMessage(msg.chat.id, "⏳ Начинаю рассылку...");
             for (let u of users) { try { await bot.sendMessage(u.uid, msg.text); } catch(e) {} }
             bot.sendMessage(msg.chat.id, "✅ Рассылка готова!"); delete adminState[msg.from.id];
         } 
