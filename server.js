@@ -891,6 +891,108 @@ app.get('/', (req, res) => {
             .promo-card-title { color: var(--gold); font-size: 18px; font-weight: 900; margin: 8px 0 12px; text-shadow: 0 0 10px rgba(255,215,0,0.35); }
             .small-info { color: #777; font-size: 11px; margin-top: 12px; line-height: 1.45; }
 
+        
+            /* VIP ХОТ ТАП — красивый экран загрузки */
+            #vipLoader {
+                position: fixed;
+                inset: 0;
+                z-index: 99999;
+                display: flex;
+                align-items: center;
+                justify-content: center;
+                background:
+                    radial-gradient(circle at 50% 20%, rgba(0,240,255,.22), transparent 34%),
+                    radial-gradient(circle at 50% 78%, rgba(255,0,200,.18), transparent 38%),
+                    linear-gradient(180deg, #06010d 0%, #12001f 55%, #030008 100%);
+                color: #fff;
+                overflow: hidden;
+                transition: opacity .45s ease, visibility .45s ease;
+            }
+            #vipLoader.hide {
+                opacity: 0;
+                visibility: hidden;
+                pointer-events: none;
+            }
+            #vipLoader::before {
+                content: "";
+                position: absolute;
+                inset: -20%;
+                background:
+                    linear-gradient(rgba(0,240,255,.18) 1px, transparent 1px),
+                    linear-gradient(90deg, rgba(0,240,255,.14) 1px, transparent 1px);
+                background-size: 48px 48px;
+                transform: perspective(500px) rotateX(62deg) translateY(18%);
+                transform-origin: center bottom;
+                animation: loaderGrid 2.2s linear infinite;
+                opacity: .38;
+            }
+            @keyframes loaderGrid {
+                from { background-position: 0 0, 0 0; }
+                to { background-position: 0 48px, 0 48px; }
+            }
+            .loaderBox {
+                position: relative;
+                width: min(86vw, 390px);
+                padding: 34px 24px;
+                border: 2px solid rgba(0,240,255,.75);
+                border-radius: 28px;
+                background: rgba(10, 6, 22, .74);
+                box-shadow: 0 0 28px rgba(0,240,255,.35), inset 0 0 22px rgba(255,0,200,.12);
+                text-align: center;
+            }
+            .loaderLogo {
+                font-size: 30px;
+                line-height: 1;
+                filter: drop-shadow(0 0 14px rgba(0,240,255,.75));
+                animation: loaderPulse 1.4s ease-in-out infinite;
+            }
+            @keyframes loaderPulse {
+                0%,100% { transform: scale(1); opacity: .9; }
+                50% { transform: scale(1.09); opacity: 1; }
+            }
+            .loaderTitle {
+                margin-top: 14px;
+                font-size: 26px;
+                font-weight: 900;
+                letter-spacing: 1px;
+                color: #fff;
+                text-shadow: 0 0 14px rgba(0,240,255,.7), 0 0 22px rgba(255,0,200,.45);
+            }
+            .loaderText {
+                margin-top: 8px;
+                font-size: 14px;
+                font-weight: 800;
+                color: #b9f8ff;
+                letter-spacing: 2px;
+                text-transform: uppercase;
+            }
+            .loaderBar {
+                margin: 24px auto 0;
+                height: 12px;
+                width: 86%;
+                border-radius: 999px;
+                overflow: hidden;
+                background: rgba(255,255,255,.09);
+                border: 1px solid rgba(0,240,255,.45);
+            }
+            .loaderBar span {
+                display: block;
+                height: 100%;
+                width: 42%;
+                border-radius: 999px;
+                background: linear-gradient(90deg, #00f0ff, #ff00cc, #ffd000);
+                box-shadow: 0 0 18px rgba(0,240,255,.7);
+                animation: loaderBarMove 1.15s ease-in-out infinite;
+            }
+            @keyframes loaderBarMove {
+                0% { transform: translateX(-105%); }
+                100% { transform: translateX(245%); }
+            }
+            .loaderHint {
+                margin-top: 14px;
+                font-size: 12px;
+                color: rgba(255,255,255,.62);
+            }
 
         
             .toast-box {
@@ -1000,111 +1102,17 @@ app.get('/', (req, res) => {
                 42%,100% { left: 125%; }
             }
 
-        
-            /* VIP HOT TAP: loader removed */
-            #vipLoader, #loader, .vip-loader, .loader, .loading-screen {
-                display: none !important;
-                opacity: 0 !important;
-                visibility: hidden !important;
-                pointer-events: none !important;
-            }
-
-        
-            /* VIP HOT TAP: game modal sms */
-            .game-modal {
-                position: fixed;
-                inset: 0;
-                z-index: 999999;
-                display: flex;
-                align-items: center;
-                justify-content: center;
-                padding: 18px;
-                background: rgba(0,0,0,.72);
-                backdrop-filter: blur(8px);
-            }
-            .game-modal.hidden { display: none !important; }
-            .game-modal-box {
-                width: 100%;
-                max-width: 360px;
-                padding: 22px;
-                border-radius: 22px;
-                background: linear-gradient(180deg, rgba(18,20,35,.98), rgba(5,5,12,.98));
-                border: 2px solid var(--neon-cyan);
-                box-shadow: 0 0 28px rgba(0,240,255,.42), inset 0 0 22px rgba(255,0,255,.14);
-                color: white;
-                text-align: center;
-            }
-            .game-modal-title {
-                font-size: 22px;
-                font-weight: 1000;
-                margin-bottom: 14px;
-                text-shadow: 0 0 14px var(--neon-cyan);
-            }
-            .game-modal-text {
-                font-size: 16px;
-                font-weight: 900;
-                line-height: 1.35;
-                margin-bottom: 15px;
-                white-space: pre-wrap;
-            }
-            .game-modal-input {
-                width: 100%;
-                box-sizing: border-box;
-                background: rgba(0,0,0,.72);
-                border: 2px solid var(--neon-cyan);
-                border-radius: 14px;
-                color: white;
-                font-size: 16px;
-                font-weight: 800;
-                padding: 14px;
-                margin-bottom: 16px;
-                outline: none;
-                text-align: center;
-            }
-            .game-modal-input.hidden { display: none !important; }
-            .game-modal-buttons {
-                display: flex;
-                gap: 10px;
-            }
-            .game-modal-btn {
-                flex: 1;
-                border: 0;
-                border-radius: 14px;
-                padding: 13px 8px;
-                color: white;
-                font-weight: 1000;
-                font-size: 14px;
-                font-family: inherit;
-            }
-            .game-modal-btn.ok {
-                background: linear-gradient(90deg, #00f0ff, #0066ff);
-                box-shadow: 0 0 14px rgba(0,240,255,.45);
-            }
-            .game-modal-btn.cancel {
-                background: linear-gradient(90deg, #ff0077, #ff00ff);
-                box-shadow: 0 0 14px rgba(255,0,255,.45);
-            }
-
-        
-            /* OLD TOP MENU REMOVED */
-            body > .nav, .app > .nav, .wrap > .nav, div.nav {
-                display: none !important;
-            }
-
         </style>
     </head>
     <body>
         <div id="gameToast" class="toast-box"></div>
-
-        <div id="gameModal" class="game-modal hidden">
-            <div class="game-modal-box">
-                <div class="game-modal-title">💎 VIP ХОТ ТАП 💎</div>
-                <div id="gameModalText" class="game-modal-text"></div>
-                <input id="gameModalInput" class="game-modal-input hidden" placeholder="">
-                <div class="game-modal-buttons">
-                    <button id="gameModalOk" class="game-modal-btn ok">✅ Подтвердить</button>
-                    <button id="gameModalCancel" class="game-modal-btn cancel">❌ Отмена</button>
-                </div>
+        <div id="vipLoader">
+            <div class="loaderBox">
+                <div class="loaderLogo">💎</div>
+                <div class="loaderTitle">VIP ХОТ ТАП</div>
+                <div class="loaderText">Загрузка казино...</div>
+                <div class="loaderBar"><span></span></div>
+                <div class="loaderHint">Подключаем банк, краш и слоты</div>
             </div>
         </div>
 
@@ -1309,106 +1317,48 @@ app.get('/', (req, res) => {
         </div>
 
         <script>
-console.log("VIP HOT TAP BUILD: NO_LOADER_NEW_UI_SMS_002");
+
+            function hideVipLoader() {
+                const loader = document.getElementById('vipLoader');
+                if (!loader) return;
+                loader.classList.add('hide');
+                setTimeout(() => loader.remove(), 650);
+            }
+            window.addEventListener('load', () => setTimeout(hideVipLoader, 900));
+            setTimeout(hideVipLoader, 4500);
+
             const tg = window.Telegram.WebApp;
             tg.expand();
             
 
             let toastTimer = null;
-            
             function showToast(msg, type = "info") {
                 const box = document.getElementById('gameToast');
                 if (!box) {
-                    console.warn(msg);
+                    try { gameAlert(msg); } catch(e) { alert(msg); }
                     return;
                 }
                 box.className = 'toast-box ' + type;
-                box.textContent = msg || '';
+                box.innerHTML = msg || '';
                 clearTimeout(toastTimer);
                 requestAnimationFrame(() => box.classList.add('show'));
                 toastTimer = setTimeout(() => {
                     box.classList.remove('show');
                 }, 2300);
             }
-
             function gameAlert(msg) {
                 const t = String(msg || '');
                 const low = t.toLowerCase();
                 let type = "info";
-                if (t.includes('✅') || t.includes('🎁') || t.includes('Выигрыш') || t.includes('забрал')) type = "success";
+                if (t.includes('✅') || t.includes('🎁') || t.includes('Начислено') || t.includes('Выигрыш') || t.includes('забрал')) type = "success";
                 if (t.includes('⚠️') || low.includes('уже') || low.includes('введите') || low.includes('лимит')) type = "warn";
-                if (t.includes('❌') || low.includes('ошибка') || low.includes('недостаточно') || low.includes('невер') || low.includes('мало')) type = "error";
+                if (t.includes('❌') || low.includes('ошибка') || low.includes('недостаточно') || low.includes('невер')) type = "error";
                 showToast(t, type);
             }
 
-            function gamePrompt(message, placeholder = '') {
-                return new Promise((resolve) => {
-                    const modal = document.getElementById('gameModal');
-                    const textBox = document.getElementById('gameModalText');
-                    const input = document.getElementById('gameModalInput');
-                    const ok = document.getElementById('gameModalOk');
-                    const cancel = document.getElementById('gameModalCancel');
+const uid = tg.initDataUnsafe?.user?.id || 123456789;
 
-                    if (!modal || !textBox || !input || !ok || !cancel) {
-                        console.warn('gamePrompt modal not found');
-                        resolve(null);
-                        return;
-                    }
-
-                    textBox.textContent = message;
-                    input.value = '';
-                    input.placeholder = placeholder || '';
-                    input.classList.remove('hidden');
-                    modal.classList.remove('hidden');
-
-                    setTimeout(() => input.focus(), 80);
-
-                    ok.onclick = () => {
-                        const value = input.value.trim();
-                        modal.classList.add('hidden');
-                        input.classList.add('hidden');
-                        resolve(value || null);
-                    };
-
-                    cancel.onclick = () => {
-                        modal.classList.add('hidden');
-                        input.classList.add('hidden');
-                        resolve(null);
-                    };
-                });
-            }
-
-            function gameConfirm(message) {
-                return new Promise((resolve) => {
-                    const modal = document.getElementById('gameModal');
-                    const textBox = document.getElementById('gameModalText');
-                    const input = document.getElementById('gameModalInput');
-                    const ok = document.getElementById('gameModalOk');
-                    const cancel = document.getElementById('gameModalCancel');
-
-                    if (!modal || !textBox || !input || !ok || !cancel) {
-                        console.warn('gameConfirm modal not found');
-                        resolve(false);
-                        return;
-                    }
-
-                    textBox.textContent = message;
-                    input.classList.add('hidden');
-                    modal.classList.remove('hidden');
-
-                    ok.onclick = () => {
-                        modal.classList.add('hidden');
-                        resolve(true);
-                    };
-
-                    cancel.onclick = () => {
-                        modal.classList.add('hidden');
-                        resolve(false);
-                    };
-                });
-            }
-
-function checkMaintenance() {
+            async function checkMaintenance() {
                 try {
                     const r = await fetch('/api/maintenance');
                     const d = await r.json();
@@ -1865,25 +1815,11 @@ function checkMaintenance() {
                 }
             }
 
-            async function withdraw() {
-                const a = await gamePrompt("💸 Введи TON-кошелёк для вывода", "Адрес кошелька");
-                if (!a) return;
-
-                const sum = await gamePrompt("💎 Сколько вывести?", "Сумма в 💎");
-                if (!sum) return;
-
-                fetch('/api/withdraw', {
-                    method: 'POST',
-                    headers: {'Content-Type':'application/json'},
-                    body: JSON.stringify({ uid, address: a, amount: parseFloat(sum) })
-                })
-                .then(r => r.json())
-                .then(d => {
-                    gameAlert(d.msg || d.err);
-                    upd();
-                    loadProfile();
-                })
-                .catch(() => gameAlert("❌ Ошибка заявки на вывод"));
+            function withdraw() {
+                const a = prompt("Кошелёк для вывода:"); if(!a) return;
+                const sum = prompt("Сумма вывода (в 💎):"); if(!sum) return;
+                fetch('/api/withdraw', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({uid, address:a, amount:parseFloat(sum)})})
+                .then(r=>r.json()).then(d=>{ gameAlert(d.msg||d.err); upd(); });
             }
             
             function renderHistory(history, containerId) {
@@ -1934,22 +1870,6 @@ function checkMaintenance() {
             setInterval(upd, 5000); upd();
             document.getElementById('bgm').muted = false; // Звук включен по умолчанию
         </script>
-    
-        <script>
-            (function killOldLoaderHard(){
-                function kill(){
-                    document.querySelectorAll('#vipLoader,#loader,.vip-loader,.loader,.loading-screen').forEach(function(el){
-                        el.remove();
-                    });
-                }
-                kill();
-                document.addEventListener('DOMContentLoaded', kill);
-                window.addEventListener('load', kill);
-                setTimeout(kill, 500);
-                setTimeout(kill, 2000);
-            })();
-        </script>
-
     </body>
     </html>`);
 });
