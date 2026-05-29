@@ -1542,6 +1542,7 @@ app.get('/', (req, res) => {
             }
             checkMaintenance();
             setInterval(checkMaintenance, 5000);
+            const SLOT_MIN_BET = ${Number(SETTINGS.minBet) || 10};
             let bal = 0, isSlotGame = false;
             let crashPollInterval = null;
             let lastCrashStatus = '';
@@ -1733,7 +1734,7 @@ app.get('/', (req, res) => {
 
             function chBet(d, id) {
                 let v = parseFloat(document.getElementById(id).value) + d;
-                if(v < 10) v = 10;
+                if(v < SLOT_MIN_BET) v = SLOT_MIN_BET;
                 document.getElementById(id).value = Math.floor(v);
             }
 
@@ -1818,7 +1819,7 @@ app.get('/', (req, res) => {
                 const betEl = document.getElementById('bet1');
                 const btn = document.getElementById('btnSpin');
                 const bet = Math.floor(Number(betEl?.value));
-                if(!Number.isFinite(bet) || bet < SETTINGS.minBet) return gameAlert("Ошибка ставки");
+                if(!Number.isFinite(bet) || bet < SLOT_MIN_BET) return gameAlert("Ошибка ставки");
                 if(bet > bal) return gameAlert("Мало 💎 ХОТ ТАП!");
                 const a = document.getElementById('bgm');
                 if(a && a.paused && !a.muted) a.play().catch(e=>{});
