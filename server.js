@@ -1147,7 +1147,7 @@ app.get('/', (req, res) => {
                 pointer-events: none;
             }
             .balance-card > * { position: relative; z-index: 1; }
-            .slots-win .slot-reel {
+            .slots-win .reel {
                 border-color: rgba(255,215,0,0.95) !important;
                 box-shadow: 0 0 22px rgba(255,215,0,0.42), inset 0 0 16px rgba(255,215,0,0.16) !important;
                 animation: winPulse .55s ease-in-out 3;
@@ -1804,22 +1804,39 @@ app.get('/', (req, res) => {
                 return html;
             }
 
+            function flashSlotsWin() {
+                const reels = document.querySelector('.reel-cont');
+                if (!reels) return;
+                reels.classList.remove('slots-win');
+                void reels.offsetWidth;
+                reels.classList.add('slots-win');
+                setTimeout(() => reels.classList.remove('slots-win'), 1800);
+            }
+
             async function playSpin() {
                 if(isSlotGame) return;
-                const bet = parseFloat(document.getElementById('bet1').value);
+                const betEl = document.getElementById('bet1');
+                const btn = document.getElementById('btnSpin');
+                const bet = Math.floor(Number(betEl?.value));
+                if(!Number.isFinite(bet) || bet < SETTINGS.minBet) return gameAlert("Ошибка ставки");
                 if(bet > bal) return gameAlert("Мало 💎 ХОТ ТАП!");
-                const a = document.getElementById('bgm'); if(a.paused && !a.muted) a.play().catch(e=>{});
+                const a = document.getElementById('bgm');
+                if(a && a.paused && !a.muted) a.play().catch(e=>{});
                 
-                isSlotGame = true; const btn = document.getElementById('btnSpin'); btn.disabled = true;
+                isSlotGame = true;
+                if(btn) btn.disabled = true;
                 
                 try {
                     const r = await fetch('/api/spin', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({uid, bet})});
                     const d = await r.json();
                     
-                    if(d.err) { gameAlert(d.err); isSlotGame=false; btn.disabled=false; return; }
+                    if(d.err) { gameAlert(d.err); isSlotGame = false; if(btn) btn.disabled = false; return; }
+                    if(!Array.isArray(d.result) || d.result.length < 3) throw new Error('Bad spin result');
                     updateBal(bal - bet);
                     
                     const s1 = document.getElementById('s1'); const s2 = document.getElementById('s2'); const s3 = document.getElementById('s3');
+                    if(!s1 || !s2 || !s3) throw new Error('Slot reels not found');
+                    document.querySelector('.reel-cont')?.classList.remove('slots-win');
                     
                     s1.style.transition = 'none'; s1.style.transform = 'translateY(0)';
                     s2.style.transition = 'none'; s2.style.transform = 'translateY(0)';
@@ -1838,11 +1855,25 @@ app.get('/', (req, res) => {
                     setTimeout(() => { s3.style.transition = 'transform 2s cubic-bezier(0.15, 1, 0.3, 1)'; s3.style.transform = 'translateY(' + targetY + 'px)'; }, 600);
                     
                     setTimeout(() => {
-                        updateBal(d.balance);
-                        if(d.winSum > 0) { flashSlotsWin(); gameAlert("🎉 ВЫИГРЫШ: " + formatBal(d.winSum) + " 💎"); if(window.navigator.vibrate) window.navigator.vibrate([100,50,100,50,100]); }
-                        isSlotGame = false; btn.disabled=false;
+                        try {
+                            updateBal(d.balance);
+                            if(d.winSum > 0) {
+                                flashSlotsWin();
+                                gameAlert("🎉 ВЫИГРЫШ: " + formatBal(d.winSum) + " 💎");
+                                if(window.navigator.vibrate) window.navigator.vibrate([100,50,100,50,100]);
+                            }
+                        } catch(e) {
+                            gameAlert("Ошибка слотов");
+                        } finally {
+                            isSlotGame = false;
+                            if(btn) btn.disabled = false;
+                        }
                     }, 2600);
-                } catch(e) { isSlotGame = false; btn.disabled=false; }
+                } catch(e) {
+                    gameAlert("Ошибка слотов");
+                    isSlotGame = false;
+                    if(btn) btn.disabled = false;
+                }
             }
 
             // --- ИГРА: КРАШ (ГЛОБАЛЬНАЯ) ---
