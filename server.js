@@ -78,6 +78,10 @@ function addHistory(user, text, amount = 0) {
     user.history = user.history.slice(0, 20);
 }
 
+function safeUid(uid) {
+    return uid === undefined || uid === null ? '' : String(uid).trim();
+}
+
 // ==========================================
 // 🤖 ТЕЛЕГРАМ БОТ (АДМИНКА)
 // ==========================================
@@ -225,7 +229,8 @@ setInterval(async () => {
 // 🌐 API ИГРЫ
 // ==========================================
 app.use('/api', async (req, res, next) => {
-    if (req.body && req.body.uid) await User.updateOne({uid: req.body.uid.toString()}, {last_active: Date.now(), notified_inactive: false}, {strict: false});
+    const uid = safeUid(req.body?.uid);
+    if (uid) await User.updateOne({ uid }, { last_active: Date.now(), notified_inactive: false }, { strict: false });
     next();
 });
 
@@ -235,14 +240,16 @@ app.get('/api/maintenance', (req, res) => {
 
 app.post('/api/sync', async (req, res) => {
     try {
-        const user = await User.findOne({ uid: req.body.uid?.toString() });
+        const uid = safeUid(req.body?.uid);
+        const user = uid ? await User.findOne({ uid }) : null;
         res.json(user || { balance: 0 });
     } catch (e) { res.json({ balance: 0 }); }
 });
 
 app.post('/api/profile', async (req, res) => {
     try {
-        const uid = req.body.uid?.toString();
+        const uid = safeUid(req.body?.uid);
+        if (!uid) return res.json({ err: "Ошибка профиля" });
         const user = await User.findOne({ uid });
         if (!user) return res.json({ err: "Ошибка профиля" });
 
@@ -268,14 +275,19 @@ app.post('/api/profile', async (req, res) => {
 app.post('/api/leaderboard', async (req, res) => {
     try {
         const tops = await User.find().sort({ balance: -1 }).limit(10);
-        res.json(tops.map(u => ({ uid: u.uid.substring(0, 3) + "***" + u.uid.substring(u.uid.length - 2), balance: Math.floor(u.balance) })));
+        res.json(tops.map(u => {
+            const uid = safeUid(u.uid) || 'player';
+            return { uid: uid.substring(0, 3) + "***" + uid.substring(Math.max(uid.length - 2, 0)), balance: Math.floor(u.balance || 0) };
+        }));
     } catch (e) { res.json([]); }
 });
 
 app.post('/api/promo', async (req, res) => {
     try {
         const { uid, promo } = req.body; const p = promo?.toUpperCase();
-        const user = await User.findOne({ uid: uid.toString() });
+        const uidStr = safeUid(uid);
+        if (!uidStr) return res.json({ err: "Ошибка профиля" });
+        const user = await User.findOne({ uid: uidStr });
         if (!user) return res.json({ err: "Ошибка профиля" });
         const pr = await Promo.findOne({ code: p });
         if (!pr) return res.json({ err: "❌ Неверный промокод!" });
@@ -292,17 +304,21 @@ app.post('/api/promo', async (req, res) => {
 
 app.post('/api/spin', async (req, res) => {
     try {
-        const { uid, bet } = req.body; const user = await User.findOne({ uid: uid.toString() });
-        if (!user || user.balance < bet || bet < SETTINGS.minBet) return res.json({ err: "Мало 💎 ХОТ ТАП!" });
-        user.balance -= bet;
+        const { uid, bet } = req.body;
+        const uidStr = safeUid(uid);
+        const safeBet = Math.floor(Number(bet));
+        if (!uidStr || isNaN(safeBet) || safeBet < SETTINGS.minBet) return res.json({ err: "Ошибка ставки" });
+        const user = await User.findOne({ uid: uidStr });
+        if (!user || user.balance < safeBet) return res.json({ err: "Мало 💎 ХОТ ТАП!" });
+        user.balance -= safeBet;
         const items = ['🍒','🔔','💎','7️⃣','🍋'];
         let result = [items[Math.floor(Math.random()*5)], items[Math.floor(Math.random()*5)], items[Math.floor(Math.random()*5)]];
         if (Math.random() < SETTINGS.winChance) result = ['7️⃣','7️⃣','7️⃣'];
         const isWin = result[0] === result[1] && result[1] === result[2];
-        const winSum = isWin ? Math.floor(bet * SETTINGS.multiplier) : 0;
+        const winSum = isWin ? Math.floor(safeBet * SETTINGS.multiplier) : 0;
         user.balance += winSum;
         user.spins++;
-        addHistory(user, `🎰 Слот -${Math.floor(bet)} 💎`, -Math.floor(bet));
+        addHistory(user, `🎰 Слот -${safeBet} 💎`, -safeBet);
         if(isWin) {
             user.wins++;
             addHistory(user, `🎰 Слот win +${winSum} 💎`, winSum);
@@ -459,7 +475,7 @@ app.post('/api/crash/state', (req, res) => {
 app.post('/api/crash/bet', async (req, res) => {
     try {
         const { uid, bet } = req.body;
-        const uidStr = uid.toString();
+        const uidStr = safeUid(uid);
         const safeBet = Math.floor(Number(bet));
 
         if (!uidStr || isNaN(safeBet) || safeBet < SETTINGS.minBet) return res.json({ err: "Ошибка ставки" });
@@ -488,7 +504,8 @@ app.post('/api/crash/bet', async (req, res) => {
 app.post('/api/crash/cashout', async (req, res) => {
     try {
         const { uid } = req.body;
-        const uidStr = uid.toString();
+        const uidStr = safeUid(uid);
+        if (!uidStr) return res.json({ err: "Ошибка профиля" });
 
         const nowSpam = Date.now();
         crashState.cashoutSpam[uidStr] = (crashState.cashoutSpam[uidStr] || []).filter(t => nowSpam - t < 2000);
@@ -542,19 +559,21 @@ app.post('/api/crash/cashout', async (req, res) => {
 app.post('/api/withdraw', async (req, res) => {
     try {
         const { uid, amount, address } = req.body; 
-        const user = await User.findOne({ uid: uid.toString() });
+        const uidStr = safeUid(uid);
+        if (!uidStr) return res.json({ err: "Ошибка профиля" });
+        const user = await User.findOne({ uid: uidStr });
         if (!user) return res.json({ err: "Ошибка профиля" });
         const safeAmount = Math.floor(Number(amount));
         if (isNaN(safeAmount) || safeAmount < 10) return res.json({ err: "Мин. вывод 10 💎" });
         if (!address || address.length < 20) return res.json({ err: "Укажи нормальный кошелёк" });
         if (user.balance < safeAmount) return res.json({ err: "Мало 💎 ХОТ ТАП!" });
-        const adminText = `🚨 **НОВАЯ ЗАЯВКА НА ВЫВОД**\nЮзер ID: \`${uid}\`\nСумма вывода: **${safeAmount} 💎**\nКошелёк: \`${address}\`\nТекущий баланс игрока: **${user.balance} 💎**`;
+        const adminText = `🚨 **НОВАЯ ЗАЯВКА НА ВЫВОД**\nЮзер ID: \`${uidStr}\`\nСумма вывода: **${safeAmount} 💎**\nКошелёк: \`${address}\`\nТекущий баланс игрока: **${user.balance} 💎**`;
         bot.sendMessage(CONFIG.ADMIN_ID, adminText, { 
             parse_mode: 'Markdown',
             reply_markup: {
                 inline_keyboard: [
-                    [{ text: "✅ Подтвердить вывод", callback_data: `withdraw_ok_${uid}_${safeAmount}` }],
-                    [{ text: "❌ Отклонить вывод", callback_data: `withdraw_no_${uid}_${safeAmount}` }]
+                    [{ text: "✅ Подтвердить вывод", callback_data: `withdraw_ok_${uidStr}_${safeAmount}` }],
+                    [{ text: "❌ Отклонить вывод", callback_data: `withdraw_no_${uidStr}_${safeAmount}` }]
                 ]
             }
         });
@@ -1023,6 +1042,97 @@ app.get('/', (req, res) => {
             .toast-box.warn { border-color: rgba(255,215,0,0.7); box-shadow: 0 0 22px rgba(255,215,0,0.18); }
             .toast-box.error { border-color: rgba(255,0,90,0.7); box-shadow: 0 0 22px rgba(255,0,90,0.22); }
 
+            .vip-modal-overlay {
+                position: fixed;
+                inset: 0;
+                z-index: 100000;
+                display: none;
+                align-items: center;
+                justify-content: center;
+                padding: 22px;
+                box-sizing: border-box;
+                background: radial-gradient(circle at 50% 28%, rgba(0,240,255,0.18), transparent 34%), rgba(0,0,0,0.72);
+                backdrop-filter: blur(12px);
+                opacity: 0;
+                transition: opacity .2s ease;
+            }
+            .vip-modal-overlay.show { display: flex; opacity: 1; }
+            .vip-modal {
+                width: min(100%, 420px);
+                border: 2px solid rgba(0,240,255,0.68);
+                border-radius: 24px;
+                padding: 20px;
+                background: linear-gradient(145deg, rgba(12,12,22,0.98), rgba(22,8,32,0.98));
+                box-shadow: 0 0 36px rgba(0,240,255,0.32), inset 0 0 22px rgba(255,0,255,0.12);
+                transform: translateY(18px) scale(.96);
+                transition: transform .2s ease;
+                text-align: left;
+            }
+            .vip-modal-overlay.show .vip-modal { transform: translateY(0) scale(1); }
+            .vip-modal-icon {
+                width: 54px;
+                height: 54px;
+                margin: 0 auto 12px;
+                border-radius: 18px;
+                display: grid;
+                place-items: center;
+                font-size: 28px;
+                background: rgba(0,240,255,0.12);
+                border: 1px solid rgba(0,240,255,0.45);
+                box-shadow: 0 0 18px rgba(0,240,255,0.28);
+            }
+            .vip-modal-title {
+                text-align: center;
+                font-size: 21px;
+                font-weight: 900;
+                color: #fff;
+                text-shadow: 0 0 14px rgba(0,240,255,.55);
+                margin-bottom: 8px;
+                text-transform: uppercase;
+            }
+            .vip-modal-text {
+                text-align: center;
+                color: rgba(255,255,255,.72);
+                font-size: 13px;
+                line-height: 1.45;
+                margin-bottom: 14px;
+            }
+            .vip-modal-field { margin: 12px 0; }
+            .vip-modal-label {
+                display: block;
+                color: var(--neon-cyan);
+                font-size: 11px;
+                font-weight: 900;
+                letter-spacing: 1px;
+                text-transform: uppercase;
+                margin-bottom: 7px;
+            }
+            .vip-modal-input {
+                width: 100%;
+                box-sizing: border-box;
+                border: 1px solid rgba(255,255,255,0.16);
+                border-radius: 14px;
+                padding: 14px 13px;
+                background: rgba(0,0,0,0.42);
+                color: #fff;
+                outline: none;
+                font: 900 16px 'Montserrat', sans-serif;
+                box-shadow: inset 0 0 14px rgba(0,240,255,0.06);
+            }
+            .vip-modal-input:focus { border-color: var(--neon-cyan); box-shadow: 0 0 14px rgba(0,240,255,0.22), inset 0 0 14px rgba(0,240,255,0.08); }
+            .vip-modal-actions { display: grid; grid-template-columns: 1fr 1.2fr; gap: 10px; margin-top: 16px; }
+            .vip-modal-btn {
+                border: 0;
+                border-radius: 14px;
+                padding: 14px 10px;
+                color: #fff;
+                font: 900 14px 'Montserrat', sans-serif;
+                text-transform: uppercase;
+                cursor: pointer;
+            }
+            .vip-modal-cancel { background: rgba(255,255,255,0.10); border: 1px solid rgba(255,255,255,0.14); color: #cfcfcf; }
+            .vip-modal-ok { background: linear-gradient(90deg, #00f0ff, #ff00ff); box-shadow: 0 0 20px rgba(0,240,255,0.28); }
+
         
             .balance-card {
                 position: relative;
@@ -1106,6 +1216,21 @@ app.get('/', (req, res) => {
     </head>
     <body>
         <div id="gameToast" class="toast-box"></div>
+        <div id="vipModalOverlay" class="vip-modal-overlay" aria-hidden="true">
+            <div class="vip-modal" role="dialog" aria-modal="true" aria-labelledby="vipModalTitle">
+                <div class="vip-modal-icon" id="vipModalIcon">💎</div>
+                <div class="vip-modal-title" id="vipModalTitle">VIP ОКНО</div>
+                <div class="vip-modal-text" id="vipModalText"></div>
+                <div class="vip-modal-field" id="vipModalField">
+                    <label class="vip-modal-label" id="vipModalLabel" for="vipModalInput">Введите значение</label>
+                    <input class="vip-modal-input" id="vipModalInput" autocomplete="off">
+                </div>
+                <div class="vip-modal-actions">
+                    <button class="vip-modal-btn vip-modal-cancel" id="vipModalCancel" type="button">Отмена</button>
+                    <button class="vip-modal-btn vip-modal-ok" id="vipModalOk" type="button">Готово</button>
+                </div>
+            </div>
+        </div>
         <div id="vipLoader">
             <div class="loaderBox">
                 <div class="loaderLogo">💎</div>
@@ -1327,19 +1452,20 @@ app.get('/', (req, res) => {
             window.addEventListener('load', () => setTimeout(hideVipLoader, 900));
             setTimeout(hideVipLoader, 4500);
 
-            const tg = window.Telegram.WebApp;
-            tg.expand();
+            const tg = window.Telegram?.WebApp || {
+                initDataUnsafe: {},
+                expand: () => {},
+                ready: () => {}
+            };
+            try { tg.expand(); tg.ready?.(); } catch(e) {}
             
 
             let toastTimer = null;
             function showToast(msg, type = "info") {
                 const box = document.getElementById('gameToast');
-                if (!box) {
-                    try { gameAlert(msg); } catch(e) { alert(msg); }
-                    return;
-                }
+                if (!box) return;
                 box.className = 'toast-box ' + type;
-                box.innerHTML = msg || '';
+                box.textContent = msg || '';
                 clearTimeout(toastTimer);
                 requestAnimationFrame(() => box.classList.add('show'));
                 toastTimer = setTimeout(() => {
@@ -1350,13 +1476,61 @@ app.get('/', (req, res) => {
                 const t = String(msg || '');
                 const low = t.toLowerCase();
                 let type = "info";
-                if (t.includes('✅') || t.includes('🎁') || t.includes('Начислено') || t.includes('Выигрыш') || t.includes('забрал')) type = "success";
+                if (t.includes('✅') || t.includes('🎁') || t.includes('Начислено') || t.includes('Выигрыш') || t.includes('забрал') || low.includes('скопировано')) type = "success";
                 if (t.includes('⚠️') || low.includes('уже') || low.includes('введите') || low.includes('лимит')) type = "warn";
-                if (t.includes('❌') || low.includes('ошибка') || low.includes('недостаточно') || low.includes('невер')) type = "error";
+                if (t.includes('❌') || low.includes('ошибка') || low.includes('недостаточно') || low.includes('невер') || low.includes('мало')) type = "error";
                 showToast(t, type);
             }
 
-const uid = tg.initDataUnsafe?.user?.id || 123456789;
+            let activeVipModalResolve = null;
+            function closeVipModal(value = null) {
+                const overlay = document.getElementById('vipModalOverlay');
+                if (overlay) {
+                    overlay.classList.remove('show');
+                    overlay.setAttribute('aria-hidden', 'true');
+                }
+                if (activeVipModalResolve) {
+                    const resolve = activeVipModalResolve;
+                    activeVipModalResolve = null;
+                    resolve(value);
+                }
+            }
+            function vipPrompt({ title, text = '', label, placeholder = '', type = 'text', icon = '💎', okText = 'Готово' }) {
+                return new Promise((resolve) => {
+                    const overlay = document.getElementById('vipModalOverlay');
+                    const input = document.getElementById('vipModalInput');
+                    const field = document.getElementById('vipModalField');
+                    const ok = document.getElementById('vipModalOk');
+                    const cancel = document.getElementById('vipModalCancel');
+                    if (!overlay || !input || !ok || !cancel) {
+                        gameAlert('Ошибка окна ввода');
+                        resolve(null);
+                        return;
+                    }
+                    activeVipModalResolve = resolve;
+                    document.getElementById('vipModalIcon').textContent = icon;
+                    document.getElementById('vipModalTitle').textContent = title || 'VIP ОКНО';
+                    document.getElementById('vipModalText').textContent = text || '';
+                    document.getElementById('vipModalLabel').textContent = label || 'Введите значение';
+                    ok.textContent = okText;
+                    input.value = '';
+                    input.type = type;
+                    input.placeholder = placeholder;
+                    if (field) field.style.display = 'block';
+                    overlay.classList.add('show');
+                    overlay.setAttribute('aria-hidden', 'false');
+                    setTimeout(() => input.focus(), 80);
+                    ok.onclick = () => closeVipModal(input.value.trim());
+                    cancel.onclick = () => closeVipModal(null);
+                    overlay.onclick = (e) => { if (e.target === overlay) closeVipModal(null); };
+                    input.onkeydown = (e) => {
+                        if (e.key === 'Enter') closeVipModal(input.value.trim());
+                        if (e.key === 'Escape') closeVipModal(null);
+                    };
+                });
+            }
+
+            const uid = tg.initDataUnsafe?.user?.id || 123456789;
 
             async function checkMaintenance() {
                 try {
@@ -1563,7 +1737,24 @@ const uid = tg.initDataUnsafe?.user?.id || 123456789;
                 document.getElementById(id).value = Math.floor(v);
             }
 
-            function copy(t) { navigator.clipboard.writeText(t); gameAlert("Скопировано!"); }
+            async function copy(t) {
+                try {
+                    if (navigator.clipboard?.writeText) await navigator.clipboard.writeText(t);
+                    else {
+                        const ta = document.createElement('textarea');
+                        ta.value = t;
+                        ta.style.position = 'fixed';
+                        ta.style.opacity = '0';
+                        document.body.appendChild(ta);
+                        ta.select();
+                        document.execCommand('copy');
+                        ta.remove();
+                    }
+                    gameAlert("✅ Скопировано!");
+                } catch(e) {
+                    gameAlert("❌ Не удалось скопировать");
+                }
+            }
 
             function toggleAudio() {
                 const a = document.getElementById('bgm');
@@ -1815,11 +2006,34 @@ const uid = tg.initDataUnsafe?.user?.id || 123456789;
                 }
             }
 
-            function withdraw() {
-                const a = prompt("Кошелёк для вывода:"); if(!a) return;
-                const sum = prompt("Сумма вывода (в 💎):"); if(!sum) return;
-                fetch('/api/withdraw', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({uid, address:a, amount:parseFloat(sum)})})
-                .then(r=>r.json()).then(d=>{ gameAlert(d.msg||d.err); upd(); });
+            async function withdraw() {
+                const a = await vipPrompt({
+                    title: 'Вывод средств',
+                    text: 'Укажи TON-кошелёк. Заявка уйдёт админу на проверку.',
+                    label: 'Кошелёк для вывода',
+                    placeholder: 'UQ...',
+                    icon: '💸',
+                    okText: 'Дальше'
+                });
+                if(!a) return;
+                const sum = await vipPrompt({
+                    title: 'Сумма вывода',
+                    text: 'Минимальный вывод: 10 💎.',
+                    label: 'Сумма в 💎',
+                    placeholder: '10',
+                    type: 'number',
+                    icon: '💎',
+                    okText: 'Отправить'
+                });
+                if(!sum) return;
+                try {
+                    const r = await fetch('/api/withdraw', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({uid, address:a, amount:parseFloat(sum)})});
+                    const d = await r.json();
+                    gameAlert(d.msg||d.err);
+                    upd();
+                } catch(e) {
+                    gameAlert('Ошибка при создании заявки');
+                }
             }
             
             function renderHistory(history, containerId) {
