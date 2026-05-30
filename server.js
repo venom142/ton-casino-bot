@@ -1182,6 +1182,8 @@ app.get('/', (req, res) => {
                 pointer-events: none;
                 transition: opacity .35s ease, visibility .35s ease;
                 animation: loaderFailsafeHide .3s ease 1.8s forwards;
+                transition: opacity .45s ease, visibility .45s ease;
+                animation: loaderFailsafeHide .35s ease 2.6s forwards;
             }
             #vipLoader.hide {
                 opacity: 0;
@@ -1191,6 +1193,7 @@ app.get('/', (req, res) => {
             }
             @keyframes loaderFailsafeHide {
                 to { opacity: 0; visibility: hidden; pointer-events: none; z-index: -1; }
+                to { opacity: 0; visibility: hidden; pointer-events: none; }
             }
             #vipLoader::before {
                 content: "";
@@ -1778,6 +1781,7 @@ app.get('/', (req, res) => {
             setTimeout(hideVipLoader, 900);
 
             let tg = (window.Telegram && window.Telegram.WebApp) || {
+            let tg = window.Telegram?.WebApp || {
                 initDataUnsafe: {},
                 expand: () => {},
                 ready: () => {},
@@ -1788,6 +1792,8 @@ app.get('/', (req, res) => {
             function refreshTelegramContext() {
                 if (window.Telegram && window.Telegram.WebApp) tg = window.Telegram.WebApp;
                 const realUid = tg.initDataUnsafe && tg.initDataUnsafe.user && tg.initDataUnsafe.user.id;
+                if (window.Telegram?.WebApp) tg = window.Telegram.WebApp;
+                const realUid = tg.initDataUnsafe?.user?.id;
                 if (realUid) {
                     uid = String(realUid);
                     try { localStorage.setItem('vipHotTapUid', uid); } catch(e) {}
@@ -1796,6 +1802,7 @@ app.get('/', (req, res) => {
                 window.uid = uid;
                 if (memo) memo.innerText = uid;
                 try { if (tg.expand) tg.expand(); if (tg.ready) tg.ready(); } catch(e) {}
+                try { tg.expand?.(); tg.ready?.(); } catch(e) {}
                 return uid;
             }
             refreshTelegramContext();
@@ -2062,6 +2069,12 @@ app.get('/', (req, res) => {
                     : '';
                 const navEl = navId ? document.getElementById(navId) : null;
                 if (navEl) navEl.classList.add('active');
+                if (navId) document.getElementById(navId)?.classList.add('active');
+                if (n===1 || n===2) document.getElementById('bnav-main').classList.add('active');
+                else if (n===7 || n===9 || n===10 || n===11) document.getElementById('bnav-promo').classList.add('active');
+                else if (n===5 || n===3 || n===6) document.getElementById('bnav-profile').classList.add('active');
+                else if (n===4) document.getElementById('bnav-bank').classList.add('active');
+                else if (n===8) document.getElementById('bnav-history').classList.add('active');
 
                 if (n===1 || n===2) {
                     document.querySelectorAll('.sub-tab').forEach(e => e.classList.remove('active'));
@@ -2071,6 +2084,8 @@ app.get('/', (req, res) => {
                 
                 if(n === 3) loadTop().catch(() => {});
                 if(n === 5 || n === 8) loadProfile().catch(() => {});
+                if(n === 3) loadTop().catch?.(() => {});
+                if(n === 5 || n === 8) loadProfile().catch?.(() => {});
                 
                 if(n === 2) {
                     if(!crashPollInterval) crashPollInterval = setInterval(pollCrashState, 500);
@@ -2093,6 +2108,7 @@ app.get('/', (req, res) => {
             async function copy(t) {
                 try {
                     if (navigator.clipboard && navigator.clipboard.writeText) await navigator.clipboard.writeText(t);
+                    if (navigator.clipboard?.writeText) await navigator.clipboard.writeText(t);
                     else {
                         const ta = document.createElement('textarea');
                         ta.value = t;
@@ -2171,6 +2187,7 @@ app.get('/', (req, res) => {
                 const betEl = document.getElementById('bet1');
                 const btn = document.getElementById('btnSpin');
                 const bet = Math.floor(Number(betEl ? betEl.value : 0));
+                const bet = Math.floor(Number(betEl?.value));
                 if(!Number.isFinite(bet) || bet < SLOT_MIN_BET) return gameAlert("Ошибка ставки");
                 if(bet > bal) return gameAlert("Мало 💎 ХОТ ТАП!");
                 const a = document.getElementById('bgm');
@@ -2191,6 +2208,7 @@ app.get('/', (req, res) => {
                     if(!s1 || !s2 || !s3) throw new Error('Slot reels not found');
                     const reelBox = document.querySelector('.reel-cont');
                     if (reelBox) reelBox.classList.remove('slots-win');
+                    document.querySelector('.reel-cont')?.classList.remove('slots-win');
                     
                     s1.style.transition = 'none'; s1.style.transform = 'translateY(0)';
                     s2.style.transition = 'none'; s2.style.transform = 'translateY(0)';
@@ -2555,6 +2573,11 @@ app.get('/', (req, res) => {
             if (navBank) navBank.addEventListener('click', (e) => { e.preventDefault(); sh(4); });
             const navHistory = document.getElementById('bnav-history');
             if (navHistory) navHistory.addEventListener('click', (e) => { e.preventDefault(); sh(8); });
+            document.getElementById('bnav-main')?.addEventListener('click', (e) => { e.preventDefault(); goMain(); });
+            document.getElementById('bnav-promo')?.addEventListener('click', (e) => { e.preventDefault(); sh(7); });
+            document.getElementById('bnav-profile')?.addEventListener('click', (e) => { e.preventDefault(); sh(5); });
+            document.getElementById('bnav-bank')?.addEventListener('click', (e) => { e.preventDefault(); sh(4); });
+            document.getElementById('bnav-history')?.addEventListener('click', (e) => { e.preventDefault(); sh(8); });
             sh(1);
 
             let syncTimer = null;
