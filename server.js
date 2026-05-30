@@ -34,7 +34,10 @@ const CONFIG = {
     START_BALANCE: 100, 
     HOTTAP_RATE: 10000,
     BG_VIDEO: "https://raw.githubusercontent.com/venom142/ton-casino-bot/main/gemini_generated_video_9fc75b5d.mp4", 
-    BGM_URL: "https://files.catbox.moe/ef3c37.mp3"
+    BGM_URL: "https://files.catbox.moe/ef3c37.mp3",
+    TASK_CHANNEL: "@XotTap_SanSanik",
+    TASK_CHANNEL_URL: "https://t.me/XotTap_SanSanik",
+    TASK_CHANNEL_REWARD: 25
 };
 
 let SETTINGS = { winChance: 0.15, multiplier: 10, minBet: 10 };
@@ -50,10 +53,19 @@ mongoose.connect(process.env.MONGO_URI)
 const User = mongoose.model('User', { 
     uid: String, 
     balance: { type: Number, default: CONFIG.START_BALANCE },
+    created_at: { type: Date, default: Date.now },
+    total_deposit_ton: { type: Number, default: 0 },
+    total_withdraw_ton: { type: Number, default: 0 },
+    crash_games: { type: Number, default: 0 },
+    crash_wins: { type: Number, default: 0 },
+    bans: { type: Number, default: 0 },
+    device: { type: String, default: 'Unknown' },
+    language: { type: String, default: 'ru' },
     spins: { type: Number, default: 0 }, 
     wins: { type: Number, default: 0 },
     last_lt: { type: String, default: "0" },
     used_promos: [String],
+    completed_tasks: [String],
     last_roulette_at: { type: Date, default: null },
     last_active: { type: Date, default: Date.now },
     notified_inactive: { type: Boolean, default: false },
@@ -83,6 +95,155 @@ function safeUid(uid) {
     return uid === undefined || uid === null ? '' : String(uid).trim();
 }
 
+function formatInt(n) {
+    return Math.floor(Number(n) || 0).toLocaleString('ru-RU');
+}
+
+function formatTon(n) {
+    const val = Number(n) || 0;
+    return Number.isInteger(val) ? String(val) : val.toFixed(2).replace(/0+$/, '').replace(/\.$/, '');
+}
+
+function formatDateRu(date) {
+    const d = date ? new Date(date) : new Date();
+    if (isNaN(d.getTime())) return '—';
+    return d.toLocaleDateString('ru-RU', { day: '2-digit', month: '2-digit', year: 'numeric' });
+}
+
+function formatAgo(date) {
+    const d = date ? new Date(date) : null;
+    if (!d || isNaN(d.getTime())) return '—';
+    const diff = Math.max(0, Date.now() - d.getTime());
+    const min = Math.floor(diff / 60000);
+    if (min < 1) return 'только что';
+    if (min < 60) return `${min} мин назад`;
+    const h = Math.floor(min / 60);
+    if (h < 24) return `${h} ч ${min % 60} мин назад`;
+    return `${Math.floor(h / 24)} д назад`;
+}
+
+function formatDurationFromActions(actions) {
+    const minutes = Math.max(0, Math.min(24 * 60, Math.floor(Number(actions || 0) * 4)));
+    const h = Math.floor(minutes / 60);
+    const m = minutes % 60;
+    if (!h && !m) return '0м';
+    if (!h) return `${m}м`;
+    return `${h}ч ${m}м`;
+}
+
+function countHistorySince(history, ms) {
+    const from = Date.now() - ms;
+    return (history || []).filter(h => {
+        const t = h.createdAt ? new Date(h.createdAt).getTime() : 0;
+        return t >= from;
+    }).length;
+}
+
+function formatRecentActions(history) {
+    const items = (history || []).slice(0, 4).map(h => h.text || 'Действие');
+    if (!items.length) return 'Нет действий';
+    return items.map(t => `• ${t}`).join('\n');
+}
+
+async function buildAdminPlayerReport(uidRaw) {
+    const uid = safeUid(uidRaw);
+    if (!uid) return '❌ Укажи ID игрока.';
+    const user = await User.findOne({ uid });
+    if (!user) return `❌ Игрок ${uid} не найден.`;
+
+    const totalUsers = await User.countDocuments();
+    const rank = await User.countDocuments({ balance: { $gt: Number(user.balance || 0) } }) + 1;
+    const history = Array.isArray(user.history) ? user.history : [];
+    const todayActions = countHistorySince(history, 24 * 60 * 60 * 1000);
+    const weekActions = countHistorySince(history, 7 * 24 * 60 * 60 * 1000);
+    const monthActions = countHistorySince(history, 30 * 24 * 60 * 60 * 1000);
+    const spins = Number(user.spins || 0);
+    const wins = Number(user.wins || 0);
+    const winrate = spins > 0 ? ((wins / spins) * 100).toFixed(2) : '0.00';
+    const completedTasks = Array.isArray(user.completed_tasks) ? user.completed_tasks.length : 0;
+    const usedPromos = Array.isArray(user.used_promos) ? user.used_promos.length : 0;
+    const crashGames = Number(user.crash_games || 0) || history.filter(h => (h.text || '').includes('Crash ставка')).length;
+    const crashWins = Number(user.crash_wins || 0) || history.filter(h => (h.text || '').includes('Crash win')).length;
+    const suspicious = crashState.suspicious.some(item => item.startsWith(`${uid}:`));
+    const totalDepositTon = Number(user.total_deposit_ton || 0) || history.filter(h => (h.text || '').includes('Донат')).reduce((sum, h) => sum + (Math.abs(Number(h.amount || 0)) / CONFIG.HOTTAP_RATE), 0);
+    const totalWithdrawTon = Number(user.total_withdraw_ton || 0) || history.filter(h => (h.text || '').includes('Вывод')).reduce((sum, h) => sum + (Math.abs(Number(h.amount || 0)) / CONFIG.HOTTAP_RATE), 0);
+    const withdrawals = history.filter(h => (h.text || '').includes('Вывод')).slice(0, 5);
+    const withdrawalText = withdrawals.length
+        ? withdrawals.map((h, i) => `${i + 1}. ${formatTon(Math.abs(Number(h.amount || 0)) / CONFIG.HOTTAP_RATE)} TON`).join('\n')
+        : 'Нет выводов';
+
+    return `👤 ИГРОК: ${uid}
+
+` +
+`🆔 ID: ${uid}
+` +
+`📅 Регистрация: ${formatDateRu(user.created_at || user._id?.getTimestamp?.())}
+` +
+`🕒 Последний вход: ${formatAgo(user.last_active)}
+
+` +
+`💎 Баланс: ${formatInt(user.balance)}
+` +
+`🎰 Спинов: ${formatInt(spins)}
+` +
+`🏆 Побед: ${formatInt(wins)}
+` +
+`📈 Винрейт: ${winrate}%
+
+` +
+`💰 Пополнено всего: ${formatTon(totalDepositTon)} TON
+` +
+`💸 Выведено всего: ${formatTon(totalWithdrawTon)} TON
+
+` +
+`🎁 Использовано промо: ${formatInt(usedPromos)}
+` +
+`📋 Выполнено заданий: ${formatInt(completedTasks)}
+
+` +
+`🚀 Crash игр: ${formatInt(crashGames)}
+` +
+`🚀 Crash побед: ${formatInt(crashWins)}
+
+` +
+`📱 Устройство: ${user.device || 'Unknown'}
+` +
+`🌍 Язык: ${user.language || 'ru'}
+` +
+`⏱ Онлайн сегодня: ${formatDurationFromActions(todayActions)}
+
+` +
+`📊 Активность:
+` +
+`Сегодня: ${formatInt(todayActions)} действия
+` +
+`Неделя: ${formatInt(weekActions)} действий
+` +
+`Месяц: ${formatInt(monthActions)} действия
+
+` +
+`📝 Последние действия:
+${formatRecentActions(history)}
+
+` +
+`⚠️ Риск:
+` +
+`Мультиаккаунт: Нет
+` +
+`Подозрительная активность: ${suspicious ? 'Да' : 'Нет'}
+` +
+`Баны: ${(user.bans || 0) > 0 ? 'Да' : 'Нет'}
+
+` +
+`🏦 История выводов:
+${withdrawalText}
+
+` +
+`📈 Рейтинг:
+` +
+`Место: #${formatInt(rank)} из ${formatInt(totalUsers)}`;
+}
+
 // ==========================================
 // 🤖 ТЕЛЕГРАМ БОТ (АДМИНКА)
 // ==========================================
@@ -97,6 +258,13 @@ bot.onText(/\/start/, async (msg) => {
     if (msg.from.id === CONFIG.ADMIN_ID) kb.push([{ text: "👑 ПАНЕЛЬ ВЛАДЕЛЬЦА", callback_data: "admin_menu" }]);
     
     bot.sendMessage(msg.chat.id, `💎 **VIP ХОТ ТАП**\nБонус за старт: **${CONFIG.START_BALANCE} 💎**\nТвой ID: \`${uid}\``, { parse_mode: 'Markdown', reply_markup: { inline_keyboard: kb } });
+});
+
+bot.onText(/\/player(?:\s+(.+))?/, async (msg, match) => {
+    if (msg.from.id !== CONFIG.ADMIN_ID) return;
+    const uid = safeUid(match && match[1]);
+    if (!uid) return bot.sendMessage(msg.chat.id, "Использование: /player 8475323865");
+    bot.sendMessage(msg.chat.id, await buildAdminPlayerReport(uid));
 });
 
 bot.on('callback_query', async (q) => {
@@ -115,6 +283,7 @@ bot.on('callback_query', async (q) => {
 
         if (user.balance >= amount) {
             user.balance -= amount;
+            user.total_withdraw_ton = Number(user.total_withdraw_ton || 0) + (amount / CONFIG.HOTTAP_RATE);
             addHistory(user, `🏦 Вывод -${amount} 💎`, -amount);
             await user.save();
             bot.sendMessage(uid, `✅ Заявка на вывод подтверждена. Списано ${amount} 💎`).catch(()=>{});
@@ -142,7 +311,7 @@ bot.on('callback_query', async (q) => {
                 [{ text: "📢 Рассылка", callback_data: "adm_msg" }, { text: "💰 Баланс", callback_data: "adm_bal" }],
                 [{ text: "🎁 Создать ПРОМО", callback_data: "adm_promo_add" }, { text: "🗑 Удал. ПРОМО", callback_data: "adm_promo_del" }],
                 [{ text: "⚙️ Изменить ШАНС", callback_data: "adm_set_chance" }, { text: "✖️ Изменить ИКС", callback_data: "adm_set_mult" }],
-                [{ text: "🛠 Техперерыв", callback_data: "adm_maintenance" }],
+                [{ text: "👤 Игрок", callback_data: "adm_player" }, { text: "🛠 Техперерыв", callback_data: "adm_maintenance" }],
                 [{ text: "📊 Статистика", callback_data: "adm_stat" }, { text: "💀 ОБНУЛИТЬ ВСЕХ", callback_data: "adm_wipe_all" }]
             ]}
         });
@@ -158,13 +327,14 @@ bot.on('callback_query', async (q) => {
             MAINTENANCE_MODE ? "🛠 Техперерыв включён. WebApp закрыт экраном техработ." : "✅ Техперерыв выключен. WebApp снова доступен."
         );
     }
+    if (q.data === "adm_player") { adminState[q.from.id] = 'player_id'; bot.sendMessage(q.message.chat.id, "ID игрока для новой админки:"); }
     if (q.data === "adm_set_chance") { adminState[q.from.id] = 'set_chance'; bot.sendMessage(q.message.chat.id, "Введите шанс (0.01 - 1.00):"); }
     if (q.data === "adm_set_mult") { adminState[q.from.id] = 'set_mult'; bot.sendMessage(q.message.chat.id, "Введите множитель (от 1):"); }
     if (q.data === "adm_wipe_all") {
         bot.sendMessage(q.message.chat.id, "⚠️ СБРОСИТЬ ВСЕХ?", { reply_markup: { inline_keyboard: [[{text: "✅ ДА", callback_data: "adm_wipe_confirm"}, {text: "❌ ОТМЕНА", callback_data: "admin_menu"}]] } });
     }
     if (q.data === "adm_wipe_confirm") {
-        await User.updateMany({}, { balance: CONFIG.START_BALANCE, spins: 0, wins: 0, used_promos: [] });
+        await User.updateMany({}, { balance: CONFIG.START_BALANCE, spins: 0, wins: 0, used_promos: [], completed_tasks: [], last_roulette_at: null, total_deposit_ton: 0, total_withdraw_ton: 0, crash_games: 0, crash_wins: 0, bans: 0 });
         bot.sendMessage(q.message.chat.id, "✅ БАЗА ОБНУЛЕНА!");
     }
     if (q.data === "adm_msg") { adminState[q.from.id] = 'msg'; bot.sendMessage(q.message.chat.id, "Текст рассылки:"); }
@@ -178,7 +348,8 @@ bot.on('message', async (msg) => {
     try {
         if (s === 'set_chance') { SETTINGS.winChance = parseFloat(msg.text); bot.sendMessage(msg.chat.id, `✅ Готово!`); delete adminState[msg.from.id]; }
         else if (s === 'set_mult') { SETTINGS.multiplier = parseFloat(msg.text); bot.sendMessage(msg.chat.id, `✅ Готово!`); delete adminState[msg.from.id]; }
-        else if (s === 'msg') { const users = await User.find(); for (let u of users) { try { await bot.sendMessage(u.uid, msg.text); } catch(e) {} } bot.sendMessage(msg.chat.id, "✅ Разослано!"); delete adminState[msg.from.id]; } 
+        else if (s === 'msg') { const users = await User.find(); for (let u of users) { try { await bot.sendMessage(u.uid, msg.text); } catch(e) {} } bot.sendMessage(msg.chat.id, "✅ Разослано!"); delete adminState[msg.from.id]; }
+        else if (s === 'player_id') { bot.sendMessage(msg.chat.id, await buildAdminPlayerReport(msg.text)); delete adminState[msg.from.id]; }
         else if (s === 'bal_id') { adminState[msg.from.id] = `bal_v_${msg.text}`; bot.sendMessage(msg.chat.id, "Сумма (в 💎):"); }
         else if (s.startsWith('bal_v_')) {
             const uid = s.split('_')[2]; const user = await User.findOne({ uid });
@@ -217,6 +388,7 @@ setInterval(async () => {
             if (user && BigInt(lt) > BigInt(user.last_lt || "0")) { 
                 const addedHottap = Math.floor(val * CONFIG.HOTTAP_RATE);
                 user.balance = Math.floor(user.balance + addedHottap); 
+                user.total_deposit_ton = Number(user.total_deposit_ton || 0) + val;
                 user.last_lt = lt.toString();
                 addHistory(user, `💰 Донат +${addedHottap} 💎`, addedHottap);
                 await user.save();
@@ -242,6 +414,20 @@ app.get('/api/maintenance', (req, res) => {
 app.post('/api/sync', async (req, res) => {
     try {
         const uid = safeUid(req.body?.uid);
+        if (!uid) return res.json({ balance: 0 });
+        const device = safeUid(req.body?.device).substring(0, 40) || 'Unknown';
+        const language = safeUid(req.body?.language).substring(0, 12) || 'ru';
+        const user = await User.findOneAndUpdate(
+            { uid },
+            { uid, last_active: Date.now(), notified_inactive: false, device, language },
+            { upsert: true, new: true, setDefaultsOnInsert: true }
+        );
+        const hasActivity = (user.spins || 0) > 0 || (user.wins || 0) > 0 || (user.history || []).length > 0 || (user.used_promos || []).length > 0 || (user.completed_tasks || []).length > 0;
+        if ((!Number.isFinite(Number(user.balance)) || Number(user.balance) <= 0) && !hasActivity) {
+            user.balance = CONFIG.START_BALANCE;
+            await user.save();
+        }
+        res.json(user || { balance: CONFIG.START_BALANCE });
         const user = uid ? await User.findOne({ uid }) : null;
         res.json(user || { balance: 0 });
     } catch (e) { res.json({ balance: 0 }); }
@@ -347,6 +533,46 @@ app.post('/api/roulette', async (req, res) => {
         await user.save();
         res.json({ prize: prize.label, amount: prize.amount, balance: Math.floor(user.balance), msg: prize.amount > 0 ? `🎡 Выпал приз ${prize.label}!` : "😭 В этот раз пусто" });
     } catch (e) { res.json({ err: "Ошибка рулетки" }); }
+});
+
+app.post('/api/tasks/channel/check', async (req, res) => {
+    try {
+        const uidStr = safeUid(req.body?.uid);
+        if (!uidStr) return res.json({ err: "Ошибка профиля" });
+        const user = await User.findOne({ uid: uidStr });
+        if (!user) return res.json({ err: "Ошибка профиля" });
+
+        const taskCode = 'telegram_channel';
+        if (Array.isArray(user.completed_tasks) && user.completed_tasks.includes(taskCode)) {
+            return res.json({ done: true, already: true, balance: Math.floor(user.balance || 0), msg: `✅ Выполнено
+🎁 Награда получена` });
+        }
+
+        let member;
+        try {
+            member = await bot.getChatMember(CONFIG.TASK_CHANNEL, uidStr);
+        } catch (e) {
+            return res.json({ err: `❌ Вы не подписаны на канал.
+Подпишитесь и попробуйте снова.` });
+        }
+
+        const isSubscribed = ['creator', 'administrator', 'member'].includes(member?.status) || (member?.status === 'restricted' && member?.is_member === true);
+        if (!isSubscribed) {
+            return res.json({ err: `❌ Вы не подписаны на канал.
+Подпишитесь и попробуйте снова.` });
+        }
+
+        user.completed_tasks = Array.isArray(user.completed_tasks) ? user.completed_tasks : [];
+        if (!user.completed_tasks.includes(taskCode)) {
+            user.completed_tasks.push(taskCode);
+            user.balance += CONFIG.TASK_CHANNEL_REWARD;
+            addHistory(user, `📋 Задание Telegram +${CONFIG.TASK_CHANNEL_REWARD} 💎`, CONFIG.TASK_CHANNEL_REWARD);
+            await user.save();
+        }
+
+        res.json({ done: true, balance: Math.floor(user.balance || 0), msg: `✅ Задание выполнено!
+🎁 На баланс начислено 💎 +${CONFIG.TASK_CHANNEL_REWARD}` });
+    } catch (e) { res.json({ err: "Ошибка проверки задания" }); }
 });
 
 app.post('/api/spin', async (req, res) => {
@@ -537,6 +763,7 @@ app.post('/api/crash/bet', async (req, res) => {
 
         user.balance -= safeBet;
         user.spins++;
+        user.crash_games = Number(user.crash_games || 0) + 1;
         addHistory(user, `🚀 Crash ставка -${safeBet} 💎`, -safeBet);
         await user.save();
 
@@ -591,6 +818,7 @@ app.post('/api/crash/cashout', async (req, res) => {
         if (user) {
             user.balance += winSum;
             user.wins++;
+            user.crash_wins = Number(user.crash_wins || 0) + 1;
             addHistory(user, `🚀 Crash win +${winSum} 💎`, winSum);
             await user.save();
             res.json({ success: true, winSum, multiplier: currentMult.toFixed(2), balance: Math.floor(user.balance) });
@@ -632,12 +860,21 @@ app.post('/api/withdraw', async (req, res) => {
 // 🎨 ФРОНТЕНД
 // ==========================================
 app.get('/', (req, res) => {
+    res.set({
+        'Cache-Control': 'no-store, no-cache, must-revalidate, proxy-revalidate',
+        'Pragma': 'no-cache',
+        'Expires': '0',
+        'Surrogate-Control': 'no-store'
+    });
     res.send(`<!DOCTYPE html>
     <html lang="ru">
     <head>
         <meta charset="UTF-8">
+        <meta http-equiv="Cache-Control" content="no-store, no-cache, must-revalidate">
+        <meta http-equiv="Pragma" content="no-cache">
+        <meta http-equiv="Expires" content="0">
         <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no">
-        <script src="https://telegram.org/js/telegram-web-app.js"></script>
+        <script defer src="https://telegram.org/js/telegram-web-app.js"></script>
         <link href="https://fonts.googleapis.com/css2?family=Montserrat:wght@700;900&display=swap" rel="stylesheet">
         <style>
             :root { --neon-cyan: #00f0ff; --neon-magenta: #ff00ff; --gold: #FFD700; --dark: #0a0a0c; }
@@ -1072,6 +1309,43 @@ app.get('/', (req, res) => {
             }
             .roulette-result.win { color: var(--gold); animation: prizePop .8s ease both; }
             @keyframes prizePop { 0% { transform: scale(.86); opacity: .4; } 55% { transform: scale(1.12); opacity: 1; } 100% { transform: scale(1); opacity: 1; } }
+            .task-card {
+                position: relative;
+                padding: 18px;
+                border-radius: 22px;
+                border: 1px solid rgba(0,240,255,0.48);
+                background: radial-gradient(circle at 18% 12%, rgba(0,240,255,0.16), transparent 34%), radial-gradient(circle at 85% 8%, rgba(255,0,255,0.18), transparent 36%), rgba(0,0,0,0.48);
+                box-shadow: 0 0 24px rgba(0,240,255,0.20), inset 0 0 22px rgba(255,255,255,0.04);
+                overflow: hidden;
+                text-align: left;
+                animation: taskFloat 3.6s ease-in-out infinite;
+            }
+            .task-card:before {
+                content: "";
+                position: absolute;
+                inset: -2px;
+                background: linear-gradient(120deg, transparent, rgba(255,215,0,0.12), transparent);
+                transform: translateX(-100%);
+                animation: taskGlow 3.4s infinite;
+                pointer-events: none;
+            }
+            .task-title { position: relative; z-index: 1; color: #fff; font-size: 17px; font-weight: 900; line-height: 1.35; text-shadow: 0 0 14px rgba(0,240,255,0.45); }
+            .task-reward { position: relative; z-index: 1; margin: 10px 0 14px; color: var(--gold); font-size: 16px; font-weight: 900; text-shadow: 0 0 12px rgba(255,215,0,0.42); }
+            .task-actions { position: relative; z-index: 1; display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+            .task-status {
+                position: relative;
+                z-index: 1;
+                margin-top: 14px;
+                min-height: 38px;
+                white-space: pre-line;
+                color: rgba(255,255,255,0.86);
+                font-size: 14px;
+                font-weight: 900;
+                line-height: 1.35;
+            }
+            .task-status.done { color: var(--gold); text-shadow: 0 0 13px rgba(255,215,0,0.42); animation: prizePop .8s ease both; }
+            @keyframes taskFloat { 0%,100% { transform: translateY(0); } 50% { transform: translateY(-3px); } }
+            @keyframes taskGlow { 0% { transform: translateX(-110%); } 45%,100% { transform: translateX(110%); } }
 
         
             /* VIP ХОТ ТАП — красивый экран загрузки */
@@ -1088,12 +1362,18 @@ app.get('/', (req, res) => {
                     linear-gradient(180deg, #06010d 0%, #12001f 55%, #030008 100%);
                 color: #fff;
                 overflow: hidden;
-                transition: opacity .45s ease, visibility .45s ease;
+                pointer-events: none;
+                transition: opacity .35s ease, visibility .35s ease;
+                animation: loaderFailsafeHide .3s ease 1.8s forwards;
             }
             #vipLoader.hide {
                 opacity: 0;
                 visibility: hidden;
                 pointer-events: none;
+                animation: none;
+            }
+            @keyframes loaderFailsafeHide {
+                to { opacity: 0; visibility: hidden; pointer-events: none; z-index: -1; }
             }
             #vipLoader::before {
                 content: "";
@@ -1541,7 +1821,7 @@ app.get('/', (req, res) => {
                 <div style="color:#00f0ff; font-size:13px; font-weight:900; margin:8px 0 14px;">Курс: 1 TON = 10 000 💎 ХОТ ТАП</div>
                 <div class="copy-box" onclick="copy('${CONFIG.WALLET}')">${CONFIG.WALLET}</div>
                 <p style="color:#ff0055; font-size:12px; font-weight:bold;">⚠️ ТВОЙ КОД ДЛЯ MEMO / COMMENT:</p>
-                <div class="copy-box" style="border-color:#ff0055; font-size:24px; font-weight:bold; color:#fff;" onclick="copy(uid.toString())" id="memoText">...</div>
+                <div class="copy-box" style="border-color:#ff0055; font-size:24px; font-weight:bold; color:#fff;" onclick="copy(window.uid || uid)" id="memoText">...</div>
                 
                 <button class="btn-main" style="margin-top:20px; font-size:16px;" onclick="withdraw()">💸 ВЫВЕСТИ СРЕДСТВА</button>
             </div>
@@ -1590,6 +1870,7 @@ app.get('/', (req, res) => {
                 <div class="bonus-grid">
                     <button class="bonus-choice" onclick="sh(9)"><span>🎁 Промокод</span></button>
                     <button class="bonus-choice roulette" onclick="sh(10)"><span>🎡 Рулетка</span></button>
+                    <button class="bonus-choice" onclick="sh(11)"><span>📋 Задания</span></button>
                 </div>
             </div>
         </div>
@@ -1643,14 +1924,64 @@ app.get('/', (req, res) => {
             </div>
         </div>
 
+        <!-- ВКЛАДКА 11: ЗАДАНИЯ -->
+        <div id="pg11" class="page">
+            <div class="card">
+                <div class="promo-card-title">📋 ЗАДАНИЯ</div>
+                <div class="small-info">Выполняй простые задания и забирай награды на баланс.</div>
+                <div class="task-card">
+                    <div class="task-title">📢 Подписаться на Telegram-канал</div>
+                    <div class="task-reward">Награда: 💎 +${CONFIG.TASK_CHANNEL_REWARD}</div>
+                    <div class="task-actions">
+                        <button class="btn-main" onclick="openTaskChannel()" style="font-size:13px; padding:14px 8px;">🔗 Подписаться</button>
+                        <button class="btn-main magenta" onclick="checkChannelTask()" id="btnTaskChannel" style="font-size:13px; padding:14px 8px;">✅ Проверить</button>
+                    </div>
+                    <div class="task-status" id="taskChannelStatus">Подпишись на канал и нажми «Проверить».</div>
+                </div>
+                <button class="btn-main dark" onclick="sh(7)" style="margin-top:15px; font-size:14px;">🔙 НАЗАД К БОНУСАМ</button>
+            </div>
+        </div>
+
         <script>
 
+            window.addEventListener('error', function () { setTimeout(function () { if (typeof hideVipLoader === 'function') hideVipLoader(); }, 0); });
+            window.addEventListener('unhandledrejection', function () { setTimeout(function () { if (typeof hideVipLoader === 'function') hideVipLoader(); }, 0); });
+
+            let vipLoaderRemoved = false;
             function hideVipLoader() {
                 const loader = document.getElementById('vipLoader');
-                if (!loader) return;
+                if (!loader || vipLoaderRemoved) return;
+                vipLoaderRemoved = true;
                 loader.classList.add('hide');
                 setTimeout(() => loader.remove(), 650);
             }
+            window.addEventListener('load', () => setTimeout(hideVipLoader, 200));
+            window.addEventListener('pageshow', () => setTimeout(hideVipLoader, 500));
+            document.addEventListener('DOMContentLoaded', () => setTimeout(hideVipLoader, 700));
+            setTimeout(hideVipLoader, 900);
+
+            let tg = (window.Telegram && window.Telegram.WebApp) || {
+                initDataUnsafe: {},
+                expand: () => {},
+                ready: () => {},
+                openTelegramLink: null
+            };
+            let uid = '123456789';
+            try { uid = localStorage.getItem('vipHotTapUid') || uid; } catch(e) {}
+            function refreshTelegramContext() {
+                if (window.Telegram && window.Telegram.WebApp) tg = window.Telegram.WebApp;
+                const realUid = tg.initDataUnsafe && tg.initDataUnsafe.user && tg.initDataUnsafe.user.id;
+                if (realUid) {
+                    uid = String(realUid);
+                    try { localStorage.setItem('vipHotTapUid', uid); } catch(e) {}
+                }
+                const memo = document.getElementById('memoText');
+                window.uid = uid;
+                if (memo) memo.innerText = uid;
+                try { if (tg.expand) tg.expand(); if (tg.ready) tg.ready(); } catch(e) {}
+                return uid;
+            }
+            refreshTelegramContext();
             window.addEventListener('load', () => setTimeout(hideVipLoader, 900));
             setTimeout(hideVipLoader, 4500);
 
@@ -1894,19 +2225,36 @@ app.get('/', (req, res) => {
 
 
             
-            document.getElementById('memoText').innerText = uid;
+            refreshTelegramContext();
             const syms = ['🍒','🔔','💎','7️⃣','🍋'];
 
             let lastMainPage = 1;
 
             function sh(n) {
+                n = Number(n);
+                if (!Number.isFinite(n)) n = 1;
                 if(n === 1 || n === 2) lastMainPage = n;
 
-                document.querySelectorAll('.page').forEach(e => e.classList.remove('active'));
+                document.querySelectorAll('.page').forEach(e => {
+                    e.classList.remove('active');
+                    e.style.display = 'none';
+                });
                 const pg = document.getElementById('pg'+n);
-                if(pg) pg.classList.add('active');
+                if(pg) {
+                    pg.classList.add('active');
+                    pg.style.display = 'block';
+                    pg.scrollTop = 0;
+                }
 
                 document.querySelectorAll('.bottom-nav-item').forEach(e => e.classList.remove('active'));
+                const navId = (n===1 || n===2) ? 'bnav-main'
+                    : (n===7 || n===9 || n===10 || n===11) ? 'bnav-promo'
+                    : (n===5 || n===3 || n===6) ? 'bnav-profile'
+                    : (n===4) ? 'bnav-bank'
+                    : (n===8) ? 'bnav-history'
+                    : '';
+                const navEl = navId ? document.getElementById(navId) : null;
+                if (navEl) navEl.classList.add('active');
                 if (n===1 || n===2) document.getElementById('bnav-main').classList.add('active');
                 else if (n===7 || n===9 || n===10) document.getElementById('bnav-promo').classList.add('active');
                 else if (n===5 || n===3 || n===6) document.getElementById('bnav-profile').classList.add('active');
@@ -1919,8 +2267,8 @@ app.get('/', (req, res) => {
                     if (n===2) document.querySelectorAll('.sub-tab-crash').forEach(e => e.classList.add('active'));
                 }
                 
-                if(n === 3) loadTop();
-                if(n === 5 || n === 8) loadProfile();
+                if(n === 3) loadTop().catch(() => {});
+                if(n === 5 || n === 8) loadProfile().catch(() => {});
                 
                 if(n === 2) {
                     if(!crashPollInterval) crashPollInterval = setInterval(pollCrashState, 500);
@@ -1942,6 +2290,7 @@ app.get('/', (req, res) => {
 
             async function copy(t) {
                 try {
+                    if (navigator.clipboard && navigator.clipboard.writeText) await navigator.clipboard.writeText(t);
                     if (navigator.clipboard?.writeText) await navigator.clipboard.writeText(t);
                     else {
                         const ta = document.createElement('textarea');
@@ -1978,9 +2327,19 @@ app.get('/', (req, res) => {
                 if (bp) bp.innerText = formatBal(bal);
             }
 
+            function detectDevice() {
+                const ua = navigator.userAgent || '';
+                if (/Android/i.test(ua)) return 'Android';
+                if (/iPhone|iPad|iPod/i.test(ua)) return 'iOS';
+                if (/Windows/i.test(ua)) return 'Windows';
+                if (/Mac/i.test(ua)) return 'Mac';
+                return 'Unknown';
+            }
+
             async function upd() {
                 try {
-                    const r = await fetch('/api/sync', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({uid})});
+                    const lang = (navigator.language || 'ru').split('-')[0];
+                    const r = await fetch('/api/sync', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({uid, device:detectDevice(), language:lang})});
                     const d = await r.json(); updateBal(d.balance);
                 } catch(e){}
             }
@@ -2020,6 +2379,7 @@ app.get('/', (req, res) => {
                 if(isSlotGame) return;
                 const betEl = document.getElementById('bet1');
                 const btn = document.getElementById('btnSpin');
+                const bet = Math.floor(Number(betEl ? betEl.value : 0));
                 const bet = Math.floor(Number(betEl?.value));
                 if(!Number.isFinite(bet) || bet < SLOT_MIN_BET) return gameAlert("Ошибка ставки");
                 if(bet > bal) return gameAlert("Мало 💎 ХОТ ТАП!");
@@ -2039,6 +2399,8 @@ app.get('/', (req, res) => {
                     
                     const s1 = document.getElementById('s1'); const s2 = document.getElementById('s2'); const s3 = document.getElementById('s3');
                     if(!s1 || !s2 || !s3) throw new Error('Slot reels not found');
+                    const reelBox = document.querySelector('.reel-cont');
+                    if (reelBox) reelBox.classList.remove('slots-win');
                     document.querySelector('.reel-cont')?.classList.remove('slots-win');
                     
                     s1.style.transition = 'none'; s1.style.transform = 'translateY(0)';
@@ -2304,7 +2666,7 @@ app.get('/', (req, res) => {
 
             function activatePromoFromProfile() {
                 const inp = document.getElementById('promoInput');
-                const code = (inp?.value || '').trim().toUpperCase();
+                const code = ((inp && inp.value) || '').trim().toUpperCase();
                 if(!code) return gameAlert("Введите промокод");
                 fetch('/api/promo', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({uid, promo:code})})
                 .then(r=>r.json()).then(d=>{
@@ -2313,6 +2675,41 @@ app.get('/', (req, res) => {
                     upd();
                     loadProfile();
                 });
+            }
+
+            function openTaskChannel() {
+                const url = '${CONFIG.TASK_CHANNEL_URL}';
+                if (tg.openTelegramLink) tg.openTelegramLink(url);
+                else window.open(url, '_blank');
+            }
+
+            async function checkChannelTask() {
+                const btn = document.getElementById('btnTaskChannel');
+                const status = document.getElementById('taskChannelStatus');
+                if (!btn || !status) return gameAlert('Ошибка задания');
+                btn.disabled = true;
+                status.classList.remove('done');
+                status.innerText = 'Проверяем подписку...';
+                try {
+                    const r = await fetch('/api/tasks/channel/check', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({uid})});
+                    const d = await r.json();
+                    if (d.err) {
+                        status.innerText = d.err;
+                        gameAlert(d.err);
+                        return;
+                    }
+                    status.innerText = d.already ? '✅ Выполнено\\n🎁 Награда получена' : (d.msg || '✅ Задание выполнено!\\n🎁 На баланс начислено 💎 +${CONFIG.TASK_CHANNEL_REWARD}');
+                    status.classList.add('done');
+                    btn.innerText = '✅ Выполнено';
+                    if (d.balance !== undefined) updateBal(d.balance);
+                    gameAlert(d.msg || '✅ Выполнено');
+                    loadProfile();
+                } catch(e) {
+                    status.innerText = 'Ошибка проверки задания';
+                    gameAlert('Ошибка проверки задания');
+                } finally {
+                    setTimeout(() => { btn.disabled = false; }, 1200);
+                }
             }
 
             let rouletteRotation = 0;
@@ -2354,6 +2751,34 @@ app.get('/', (req, res) => {
                 }
             }
 
+            Object.assign(window, {
+                sh, goMain, chBet, copy, toggleAudio, setCrashBet, playSpin,
+                placeCrashBet, cashoutCrashGlobal, withdraw, activatePromoFromProfile,
+                openTaskChannel, checkChannelTask, spinBonusRoulette
+            });
+            const navMain = document.getElementById('bnav-main');
+            if (navMain) navMain.addEventListener('click', (e) => { e.preventDefault(); goMain(); });
+            const navPromo = document.getElementById('bnav-promo');
+            if (navPromo) navPromo.addEventListener('click', (e) => { e.preventDefault(); sh(7); });
+            const navProfile = document.getElementById('bnav-profile');
+            if (navProfile) navProfile.addEventListener('click', (e) => { e.preventDefault(); sh(5); });
+            const navBank = document.getElementById('bnav-bank');
+            if (navBank) navBank.addEventListener('click', (e) => { e.preventDefault(); sh(4); });
+            const navHistory = document.getElementById('bnav-history');
+            if (navHistory) navHistory.addEventListener('click', (e) => { e.preventDefault(); sh(8); });
+            sh(1);
+
+            let syncTimer = null;
+            function startVipApp() {
+                refreshTelegramContext();
+                upd();
+                if (!syncTimer) syncTimer = setInterval(() => { refreshTelegramContext(); upd(); }, 5000);
+                const bgm = document.getElementById('bgm');
+                if (bgm) bgm.muted = false; // Звук включен по умолчанию
+            }
+            document.addEventListener('DOMContentLoaded', () => setTimeout(startVipApp, 250));
+            window.addEventListener('pageshow', () => setTimeout(startVipApp, 650));
+            setTimeout(startVipApp, 900);
             setInterval(upd, 5000); upd();
             document.getElementById('bgm').muted = false; // Звук включен по умолчанию
         </script>
