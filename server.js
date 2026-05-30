@@ -252,6 +252,11 @@ app.post('/api/sync', async (req, res) => {
             { uid, last_active: Date.now(), notified_inactive: false },
             { upsert: true, new: true, setDefaultsOnInsert: true }
         );
+        const hasActivity = (user.spins || 0) > 0 || (user.wins || 0) > 0 || (user.history || []).length > 0 || (user.used_promos || []).length > 0 || (user.completed_tasks || []).length > 0;
+        if ((!Number.isFinite(Number(user.balance)) || Number(user.balance) <= 0) && !hasActivity) {
+            user.balance = CONFIG.START_BALANCE;
+            await user.save();
+        }
         res.json(user || { balance: CONFIG.START_BALANCE });
     } catch (e) { res.json({ balance: 0 }); }
 });
@@ -1174,6 +1179,9 @@ app.get('/', (req, res) => {
                     linear-gradient(180deg, #06010d 0%, #12001f 55%, #030008 100%);
                 color: #fff;
                 overflow: hidden;
+                pointer-events: none;
+                transition: opacity .35s ease, visibility .35s ease;
+                animation: loaderFailsafeHide .3s ease 1.8s forwards;
                 transition: opacity .45s ease, visibility .45s ease;
                 animation: loaderFailsafeHide .35s ease 2.6s forwards;
             }
@@ -1184,6 +1192,7 @@ app.get('/', (req, res) => {
                 animation: none;
             }
             @keyframes loaderFailsafeHide {
+                to { opacity: 0; visibility: hidden; pointer-events: none; z-index: -1; }
                 to { opacity: 0; visibility: hidden; pointer-events: none; }
             }
             #vipLoader::before {
@@ -1766,7 +1775,7 @@ app.get('/', (req, res) => {
             window.addEventListener('load', () => setTimeout(hideVipLoader, 200));
             window.addEventListener('pageshow', () => setTimeout(hideVipLoader, 500));
             document.addEventListener('DOMContentLoaded', () => setTimeout(hideVipLoader, 700));
-            setTimeout(hideVipLoader, 1500);
+            setTimeout(hideVipLoader, 900);
 
             let tg = window.Telegram?.WebApp || {
                 initDataUnsafe: {},
@@ -1784,6 +1793,7 @@ app.get('/', (req, res) => {
                     try { localStorage.setItem('vipHotTapUid', uid); } catch(e) {}
                 }
                 const memo = document.getElementById('memoText');
+                window.uid = uid;
                 if (memo) memo.innerText = uid;
                 try { tg.expand?.(); tg.ready?.(); } catch(e) {}
                 return uid;
@@ -2516,6 +2526,12 @@ app.get('/', (req, res) => {
                     setTimeout(() => { btn.disabled = false; }, 4000);
                 }
             }
+
+            Object.assign(window, {
+                sh, goMain, chBet, copy, toggleAudio, setCrashBet, playSpin,
+                placeCrashBet, cashoutCrashGlobal, withdraw, activatePromoFromProfile,
+                openTaskChannel, checkChannelTask, spinBonusRoulette
+            });
 
             let syncTimer = null;
             function startVipApp() {
