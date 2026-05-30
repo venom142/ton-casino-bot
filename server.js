@@ -1182,6 +1182,8 @@ app.get('/', (req, res) => {
                 pointer-events: none;
                 transition: opacity .35s ease, visibility .35s ease;
                 animation: loaderFailsafeHide .3s ease 1.8s forwards;
+                transition: opacity .45s ease, visibility .45s ease;
+                animation: loaderFailsafeHide .35s ease 2.6s forwards;
             }
             #vipLoader.hide {
                 opacity: 0;
@@ -1191,6 +1193,7 @@ app.get('/', (req, res) => {
             }
             @keyframes loaderFailsafeHide {
                 to { opacity: 0; visibility: hidden; pointer-events: none; z-index: -1; }
+                to { opacity: 0; visibility: hidden; pointer-events: none; }
             }
             #vipLoader::before {
                 content: "";
@@ -2058,6 +2061,11 @@ app.get('/', (req, res) => {
                     : (n===8) ? 'bnav-history'
                     : '';
                 if (navId) document.getElementById(navId)?.classList.add('active');
+                if (n===1 || n===2) document.getElementById('bnav-main').classList.add('active');
+                else if (n===7 || n===9 || n===10 || n===11) document.getElementById('bnav-promo').classList.add('active');
+                else if (n===5 || n===3 || n===6) document.getElementById('bnav-profile').classList.add('active');
+                else if (n===4) document.getElementById('bnav-bank').classList.add('active');
+                else if (n===8) document.getElementById('bnav-history').classList.add('active');
 
                 if (n===1 || n===2) {
                     document.querySelectorAll('.sub-tab').forEach(e => e.classList.remove('active'));
