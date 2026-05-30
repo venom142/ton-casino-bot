@@ -54,6 +54,7 @@ const User = mongoose.model('User', {
     wins: { type: Number, default: 0 },
     last_lt: { type: String, default: "0" },
     used_promos: [String],
+    last_roulette_at: { type: Date, default: null },
     last_active: { type: Date, default: Date.now },
     notified_inactive: { type: Boolean, default: false },
     history: [{
@@ -300,6 +301,52 @@ app.post('/api/promo', async (req, res) => {
         pr.usedCount += 1; await pr.save(); 
         res.json({ msg: `🎁 Начислено +${pr.value} 💎.` });
     } catch (e) { res.json({ err: "Ошибка сервера" }); }
+});
+
+app.post('/api/roulette', async (req, res) => {
+    try {
+        const { uid } = req.body;
+        const uidStr = safeUid(uid);
+        if (!uidStr) return res.json({ err: "Ошибка профиля" });
+        const user = await User.findOne({ uid: uidStr });
+        if (!user) return res.json({ err: "Ошибка профиля" });
+
+        const now = Date.now();
+        const dayMs = 24 * 60 * 60 * 1000;
+        const lastSpin = user.last_roulette_at ? new Date(user.last_roulette_at).getTime() : 0;
+        if (lastSpin && now - lastSpin < dayMs) {
+            const remainingMinutes = Math.max(1, Math.ceil((dayMs - (now - lastSpin)) / 60000));
+            const hours = Math.floor(remainingMinutes / 60);
+            const minutes = remainingMinutes % 60;
+            return res.json({ err: `⏰ Вы уже использовали бесплатную рулетку.
+Попробуйте снова через: ${hours} ч ${minutes} мин.` });
+        }
+
+        const prizes = [
+            { label: "💎 +10", amount: 10, chance: 30 },
+            { label: "💎 +25", amount: 25, chance: 20 },
+            { label: "💎 +50", amount: 50, chance: 10 },
+            { label: "💎 +100", amount: 100, chance: 5 },
+            { label: "😭 Пусто", amount: 0, chance: 35 }
+        ];
+        const roll = Math.random() * 100;
+        let sum = 0;
+        let prize = prizes[prizes.length - 1];
+        for (const item of prizes) {
+            sum += item.chance;
+            if (roll < sum) { prize = item; break; }
+        }
+
+        user.last_roulette_at = new Date(now);
+        if (prize.amount > 0) {
+            user.balance += prize.amount;
+            addHistory(user, `🎡 Рулетка ${prize.label}`, prize.amount);
+        } else {
+            addHistory(user, "🎡 Рулетка: пусто", 0);
+        }
+        await user.save();
+        res.json({ prize: prize.label, amount: prize.amount, balance: Math.floor(user.balance), msg: prize.amount > 0 ? `🎡 Выпал приз ${prize.label}!` : "😭 В этот раз пусто" });
+    } catch (e) { res.json({ err: "Ошибка рулетки" }); }
 });
 
 app.post('/api/spin', async (req, res) => {
@@ -909,6 +956,122 @@ app.get('/', (req, res) => {
             .history-time { color: #777; font-size: 10px; margin-top: 3px; }
             .promo-card-title { color: var(--gold); font-size: 18px; font-weight: 900; margin: 8px 0 12px; text-shadow: 0 0 10px rgba(255,215,0,0.35); }
             .small-info { color: #777; font-size: 11px; margin-top: 12px; line-height: 1.45; }
+            .bonus-grid { display: grid; grid-template-columns: 1fr; gap: 12px; margin-top: 14px; }
+            .bonus-choice {
+                position: relative;
+                border: 1px solid rgba(0,240,255,0.38);
+                border-radius: 18px;
+                padding: 18px 16px;
+                background: linear-gradient(135deg, rgba(0,240,255,0.10), rgba(255,0,255,0.12)), rgba(0,0,0,0.52);
+                box-shadow: 0 0 20px rgba(0,240,255,0.16), inset 0 0 18px rgba(255,255,255,0.04);
+                color: #fff;
+                font-size: 18px;
+                font-weight: 900;
+                text-transform: uppercase;
+                cursor: pointer;
+                overflow: hidden;
+            }
+            .bonus-choice:before {
+                content: "";
+                position: absolute;
+                inset: -60% -20%;
+                background: linear-gradient(90deg, transparent, rgba(255,255,255,0.16), transparent);
+                transform: rotate(18deg) translateX(-120%);
+                animation: bonusShine 3.2s infinite;
+            }
+            .bonus-choice span { position: relative; z-index: 1; }
+            .bonus-choice.roulette { border-color: rgba(255,215,0,0.55); box-shadow: 0 0 22px rgba(255,215,0,0.16), inset 0 0 20px rgba(255,0,255,0.08); }
+            @keyframes bonusShine { 0% { transform: rotate(18deg) translateX(-130%); } 48%,100% { transform: rotate(18deg) translateX(130%); } }
+            .roulette-stage { display: grid; place-items: center; margin: 16px 0 18px; position: relative; }
+            .roulette-pointer {
+                width: 0;
+                height: 0;
+                border-left: 16px solid transparent;
+                border-right: 16px solid transparent;
+                border-top: 30px solid var(--gold);
+                filter: drop-shadow(0 0 10px rgba(255,215,0,0.75));
+                position: relative;
+                z-index: 3;
+                margin-bottom: -14px;
+            }
+            .roulette-wheel {
+                width: min(76vw, 300px);
+                height: min(76vw, 300px);
+                border-radius: 50%;
+                position: relative;
+                border: 5px solid rgba(0,240,255,0.75);
+                background: conic-gradient(#00f0ff 0deg 72deg, #ff00ff 72deg 144deg, #ffd700 144deg 216deg, #00ff88 216deg 288deg, #3b2a66 288deg 360deg);
+                box-shadow: 0 0 34px rgba(0,240,255,0.34), inset 0 0 30px rgba(0,0,0,0.42);
+                transition: transform 3.8s cubic-bezier(0.12, 0.78, 0.18, 1);
+                overflow: hidden;
+            }
+            .roulette-wheel:before {
+                content: "";
+                position: absolute;
+                inset: 12px;
+                border-radius: 50%;
+                border: 2px dashed rgba(255,255,255,0.45);
+                box-shadow: inset 0 0 18px rgba(0,0,0,0.35);
+            }
+            .roulette-wheel:after {
+                content: "💎";
+                position: absolute;
+                inset: 50%;
+                width: 70px;
+                height: 70px;
+                margin: -35px;
+                border-radius: 50%;
+                display: grid;
+                place-items: center;
+                background: rgba(0,0,0,0.78);
+                border: 3px solid #fff;
+                box-shadow: 0 0 20px rgba(255,255,255,0.32);
+                font-size: 32px;
+            }
+            .roulette-label {
+                position: absolute;
+                left: 50%;
+                top: 50%;
+                width: 88px;
+                margin-left: -44px;
+                margin-top: -13px;
+                color: #fff;
+                font-size: 13px;
+                font-weight: 900;
+                text-shadow: 0 2px 8px rgba(0,0,0,0.8);
+                transform-origin: 44px 13px;
+            }
+            .roulette-label.p1 { transform: rotate(36deg) translateY(-104px) rotate(-36deg); }
+            .roulette-label.p2 { transform: rotate(108deg) translateY(-104px) rotate(-108deg); }
+            .roulette-label.p3 { transform: rotate(180deg) translateY(-104px) rotate(-180deg); }
+            .roulette-label.p4 { transform: rotate(252deg) translateY(-104px) rotate(-252deg); }
+            .roulette-label.p5 { transform: rotate(324deg) translateY(-104px) rotate(-324deg); }
+            .roulette-odds {
+                display: grid;
+                grid-template-columns: 1fr 1fr;
+                gap: 7px;
+                margin: 12px 0 6px;
+            }
+            .roulette-odds div {
+                padding: 8px 6px;
+                border-radius: 12px;
+                background: rgba(0,0,0,0.34);
+                border: 1px solid rgba(255,255,255,0.08);
+                color: rgba(255,255,255,0.86);
+                font-size: 11px;
+                font-weight: 900;
+            }
+            .roulette-result {
+                min-height: 46px;
+                margin: 12px 0;
+                color: #fff;
+                font-size: 18px;
+                font-weight: 900;
+                text-shadow: 0 0 14px rgba(0,240,255,0.55);
+                white-space: pre-line;
+            }
+            .roulette-result.win { color: var(--gold); animation: prizePop .8s ease both; }
+            @keyframes prizePop { 0% { transform: scale(.86); opacity: .4; } 55% { transform: scale(1.12); opacity: 1; } 100% { transform: scale(1); opacity: 1; } }
 
         
             /* VIP ХОТ ТАП — красивый экран загрузки */
@@ -1260,7 +1423,7 @@ app.get('/', (req, res) => {
             </div>
             <div class="bottom-nav-item" id="bnav-promo" onclick="sh(7)">
                 <div class="icon">🎁</div>
-                <div>Промо</div>
+                <div>Бонусы</div>
             </div>
             <div class="bottom-nav-item" id="bnav-profile" onclick="sh(5)">
                 <div class="icon">👤</div>
@@ -1419,15 +1582,15 @@ app.get('/', (req, res) => {
             </div>
         </div>
 
-        <!-- ВКЛАДКА 7: ПРОМО -->
+        <!-- ВКЛАДКА 7: БОНУСЫ -->
         <div id="pg7" class="page">
             <div class="card">
-                <div class="promo-card-title">🎁 ПРОМОКОД</div>
-                <div class="input-box" style="margin-bottom:12px;">
-                    <span>Введите промокод</span>
-                    <input type="text" id="promoInput" placeholder="VIPSTART" style="text-transform:uppercase;">
+                <div class="promo-card-title">🎁 БОНУСЫ</div>
+                <div class="small-info">Выбирай бонус: активируй промокод или крути бесплатную рулетку 1 раз в 24 часа.</div>
+                <div class="bonus-grid">
+                    <button class="bonus-choice" onclick="sh(9)"><span>🎁 Промокод</span></button>
+                    <button class="bonus-choice roulette" onclick="sh(10)"><span>🎡 Рулетка</span></button>
                 </div>
-                <button class="btn-main magenta" onclick="activatePromoFromProfile()" style="font-size:16px;">АКТИВИРОВАТЬ</button>
             </div>
         </div>
 
@@ -1438,6 +1601,45 @@ app.get('/', (req, res) => {
                 <div id="historyListPage8" class="history-list">
                     <div class="history-row"><div><div class="history-main">Пока действий нет</div><div class="history-time">Сыграй или пополни баланс</div></div></div>
                 </div>
+            </div>
+        </div>
+
+        <!-- ВКЛАДКА 9: ПРОМОКОД -->
+        <div id="pg9" class="page">
+            <div class="card">
+                <div class="promo-card-title">🎁 ПРОМОКОД</div>
+                <div class="input-box" style="margin-bottom:12px;">
+                    <span>Введите промокод</span>
+                    <input type="text" id="promoInput" placeholder="VIPSTART" style="text-transform:uppercase;">
+                </div>
+                <button class="btn-main magenta" onclick="activatePromoFromProfile()" style="font-size:16px;">АКТИВИРОВАТЬ</button>
+                <button class="btn-main dark" onclick="sh(7)" style="margin-top:12px; font-size:14px;">🔙 НАЗАД К БОНУСАМ</button>
+            </div>
+        </div>
+
+        <!-- ВКЛАДКА 10: РУЛЕТКА -->
+        <div id="pg10" class="page">
+            <div class="card">
+                <div class="promo-card-title">🎡 Бесплатная рулетка</div>
+                <div class="small-info">Возможные призы и шансы выпадения. Доступно 1 раз в 24 часа.</div>
+                <div class="roulette-odds">
+                    <div>💎 +10 — 30%</div><div>💎 +25 — 20%</div>
+                    <div>💎 +50 — 10%</div><div>💎 +100 — 5%</div>
+                    <div>😭 Пусто — 35%</div>
+                </div>
+                <div class="roulette-stage">
+                    <div class="roulette-pointer"></div>
+                    <div class="roulette-wheel" id="rouletteWheel">
+                        <div class="roulette-label p1">💎 +10</div>
+                        <div class="roulette-label p2">💎 +25</div>
+                        <div class="roulette-label p3">💎 +50</div>
+                        <div class="roulette-label p4">💎 +100</div>
+                        <div class="roulette-label p5">😭 Пусто</div>
+                    </div>
+                </div>
+                <div class="roulette-result" id="rouletteResult">Нажми кнопку и забери бесплатный приз</div>
+                <button class="btn-main" onclick="spinBonusRoulette()" id="btnRoulette" style="font-size:16px;">🎡 КРУТИТЬ РУЛЕТКУ</button>
+                <button class="btn-main dark" onclick="sh(7)" style="margin-top:12px; font-size:14px;">🔙 НАЗАД К БОНУСАМ</button>
             </div>
         </div>
 
@@ -1476,7 +1678,7 @@ app.get('/', (req, res) => {
                 const t = String(msg || '');
                 const low = t.toLowerCase();
                 let type = "info";
-                if (t.includes('✅') || t.includes('🎁') || t.includes('Начислено') || t.includes('Выигрыш') || t.includes('забрал') || low.includes('скопировано')) type = "success";
+                if (t.includes('✅') || t.includes('🎁') || t.includes('🎡 Выпал') || t.includes('Начислено') || t.includes('Выигрыш') || t.includes('забрал') || low.includes('скопировано')) type = "success";
                 if (t.includes('⚠️') || low.includes('уже') || low.includes('введите') || low.includes('лимит')) type = "warn";
                 if (t.includes('❌') || low.includes('ошибка') || low.includes('недостаточно') || low.includes('невер') || low.includes('мало')) type = "error";
                 showToast(t, type);
@@ -1706,7 +1908,7 @@ app.get('/', (req, res) => {
 
                 document.querySelectorAll('.bottom-nav-item').forEach(e => e.classList.remove('active'));
                 if (n===1 || n===2) document.getElementById('bnav-main').classList.add('active');
-                else if (n===7) document.getElementById('bnav-promo').classList.add('active');
+                else if (n===7 || n===9 || n===10) document.getElementById('bnav-promo').classList.add('active');
                 else if (n===5 || n===3 || n===6) document.getElementById('bnav-profile').classList.add('active');
                 else if (n===4) document.getElementById('bnav-bank').classList.add('active');
                 else if (n===8) document.getElementById('bnav-history').classList.add('active');
@@ -2111,6 +2313,45 @@ app.get('/', (req, res) => {
                     upd();
                     loadProfile();
                 });
+            }
+
+            let rouletteRotation = 0;
+            const roulettePrizeIndex = { "💎 +10": 0, "💎 +25": 1, "💎 +50": 2, "💎 +100": 3, "😭 Пусто": 4 };
+            async function spinBonusRoulette() {
+                const btn = document.getElementById('btnRoulette');
+                const wheel = document.getElementById('rouletteWheel');
+                const resultBox = document.getElementById('rouletteResult');
+                if (!btn || !wheel || !resultBox) return gameAlert('Ошибка рулетки');
+                btn.disabled = true;
+                resultBox.classList.remove('win');
+                resultBox.innerText = 'Рулетка запускается...';
+                try {
+                    const r = await fetch('/api/roulette', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({uid})});
+                    const d = await r.json();
+                    if (d.err) {
+                        resultBox.innerText = d.err;
+                        gameAlert(d.err);
+                        return;
+                    }
+                    const idx = roulettePrizeIndex[d.prize] ?? 4;
+                    const segment = 72;
+                    const center = idx * segment + segment / 2;
+                    rouletteRotation = Math.ceil(rouletteRotation / 360) * 360 + 360 * 5 + (360 - center) + Math.floor(Math.random() * 18 - 9);
+                    wheel.style.transform = 'rotate(' + rouletteRotation + 'deg)';
+                    setTimeout(() => {
+                        resultBox.innerText = d.msg || ('Выпало: ' + d.prize);
+                        resultBox.classList.add('win');
+                        if (d.balance !== undefined) updateBal(d.balance);
+                        gameAlert(d.msg || ('Выпало: ' + d.prize));
+                        if(window.navigator.vibrate) window.navigator.vibrate([80,50,120]);
+                        loadProfile();
+                    }, 3900);
+                } catch(e) {
+                    resultBox.innerText = 'Ошибка рулетки';
+                    gameAlert('Ошибка рулетки');
+                } finally {
+                    setTimeout(() => { btn.disabled = false; }, 4000);
+                }
             }
 
             setInterval(upd, 5000); upd();
