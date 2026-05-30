@@ -246,8 +246,13 @@ app.get('/api/maintenance', (req, res) => {
 app.post('/api/sync', async (req, res) => {
     try {
         const uid = safeUid(req.body?.uid);
-        const user = uid ? await User.findOne({ uid }) : null;
-        res.json(user || { balance: 0 });
+        if (!uid) return res.json({ balance: 0 });
+        const user = await User.findOneAndUpdate(
+            { uid },
+            { uid, last_active: Date.now(), notified_inactive: false },
+            { upsert: true, new: true, setDefaultsOnInsert: true }
+        );
+        res.json(user || { balance: CONFIG.START_BALANCE });
     } catch (e) { res.json({ balance: 0 }); }
 });
 
@@ -1170,7 +1175,7 @@ app.get('/', (req, res) => {
                 color: #fff;
                 overflow: hidden;
                 transition: opacity .45s ease, visibility .45s ease;
-                animation: loaderFailsafeHide .45s ease 6s forwards;
+                animation: loaderFailsafeHide .35s ease 2.6s forwards;
             }
             #vipLoader.hide {
                 opacity: 0;
@@ -1758,17 +1763,32 @@ app.get('/', (req, res) => {
                 loader.classList.add('hide');
                 setTimeout(() => loader.remove(), 650);
             }
-            window.addEventListener('load', () => setTimeout(hideVipLoader, 500));
-            window.addEventListener('pageshow', () => setTimeout(hideVipLoader, 1200));
-            document.addEventListener('DOMContentLoaded', () => setTimeout(hideVipLoader, 1800));
-            setTimeout(hideVipLoader, 4500);
+            window.addEventListener('load', () => setTimeout(hideVipLoader, 200));
+            window.addEventListener('pageshow', () => setTimeout(hideVipLoader, 500));
+            document.addEventListener('DOMContentLoaded', () => setTimeout(hideVipLoader, 700));
+            setTimeout(hideVipLoader, 1500);
 
-            const tg = window.Telegram?.WebApp || {
+            let tg = window.Telegram?.WebApp || {
                 initDataUnsafe: {},
                 expand: () => {},
-                ready: () => {}
+                ready: () => {},
+                openTelegramLink: null
             };
-            try { tg.expand(); tg.ready?.(); } catch(e) {}
+            let uid = '123456789';
+            try { uid = localStorage.getItem('vipHotTapUid') || uid; } catch(e) {}
+            function refreshTelegramContext() {
+                if (window.Telegram?.WebApp) tg = window.Telegram.WebApp;
+                const realUid = tg.initDataUnsafe?.user?.id;
+                if (realUid) {
+                    uid = String(realUid);
+                    try { localStorage.setItem('vipHotTapUid', uid); } catch(e) {}
+                }
+                const memo = document.getElementById('memoText');
+                if (memo) memo.innerText = uid;
+                try { tg.expand?.(); tg.ready?.(); } catch(e) {}
+                return uid;
+            }
+            refreshTelegramContext();
             
 
             let toastTimer = null;
@@ -1841,7 +1861,6 @@ app.get('/', (req, res) => {
                 });
             }
 
-            const uid = tg.initDataUnsafe?.user?.id || 123456789;
 
             async function checkMaintenance() {
                 try {
@@ -2003,7 +2022,7 @@ app.get('/', (req, res) => {
 
 
             
-            document.getElementById('memoText').innerText = uid;
+            refreshTelegramContext();
             const syms = ['🍒','🔔','💎','7️⃣','🍋'];
 
             let lastMainPage = 1;
@@ -2498,8 +2517,17 @@ app.get('/', (req, res) => {
                 }
             }
 
-            setInterval(upd, 5000); upd();
-            document.getElementById('bgm').muted = false; // Звук включен по умолчанию
+            let syncTimer = null;
+            function startVipApp() {
+                refreshTelegramContext();
+                upd();
+                if (!syncTimer) syncTimer = setInterval(() => { refreshTelegramContext(); upd(); }, 5000);
+                const bgm = document.getElementById('bgm');
+                if (bgm) bgm.muted = false; // Звук включен по умолчанию
+            }
+            document.addEventListener('DOMContentLoaded', () => setTimeout(startVipApp, 250));
+            window.addEventListener('pageshow', () => setTimeout(startVipApp, 650));
+            setTimeout(startVipApp, 900);
         </script>
     </body>
     </html>`);
