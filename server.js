@@ -1182,6 +1182,8 @@ app.get('/', (req, res) => {
                 pointer-events: none;
                 transition: opacity .35s ease, visibility .35s ease;
                 animation: loaderFailsafeHide .3s ease 1.8s forwards;
+                transition: opacity .45s ease, visibility .45s ease;
+                animation: loaderFailsafeHide .35s ease 2.6s forwards;
             }
             #vipLoader.hide {
                 opacity: 0;
@@ -1191,6 +1193,7 @@ app.get('/', (req, res) => {
             }
             @keyframes loaderFailsafeHide {
                 to { opacity: 0; visibility: hidden; pointer-events: none; z-index: -1; }
+                to { opacity: 0; visibility: hidden; pointer-events: none; }
             }
             #vipLoader::before {
                 content: "";
