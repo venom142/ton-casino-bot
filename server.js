@@ -1641,7 +1641,7 @@ app.get('/', (req, res) => {
                 <div style="color:#00f0ff; font-size:13px; font-weight:900; margin:8px 0 14px;">Курс: 1 TON = 10 000 💎 ХОТ ТАП</div>
                 <div class="copy-box" onclick="copy('${CONFIG.WALLET}')">${CONFIG.WALLET}</div>
                 <p style="color:#ff0055; font-size:12px; font-weight:bold;">⚠️ ТВОЙ КОД ДЛЯ MEMO / COMMENT:</p>
-                <div class="copy-box" style="border-color:#ff0055; font-size:24px; font-weight:bold; color:#fff;" onclick="copy(uid.toString())" id="memoText">...</div>
+                <div class="copy-box" style="border-color:#ff0055; font-size:24px; font-weight:bold; color:#fff;" onclick="copy(window.uid || uid)" id="memoText">...</div>
                 
                 <button class="btn-main" style="margin-top:20px; font-size:16px;" onclick="withdraw()">💸 ВЫВЕСТИ СРЕДСТВА</button>
             </div>
@@ -1764,6 +1764,9 @@ app.get('/', (req, res) => {
 
         <script>
 
+            window.addEventListener('error', function () { setTimeout(function () { if (typeof hideVipLoader === 'function') hideVipLoader(); }, 0); });
+            window.addEventListener('unhandledrejection', function () { setTimeout(function () { if (typeof hideVipLoader === 'function') hideVipLoader(); }, 0); });
+
             let vipLoaderRemoved = false;
             function hideVipLoader() {
                 const loader = document.getElementById('vipLoader');
@@ -1777,6 +1780,7 @@ app.get('/', (req, res) => {
             document.addEventListener('DOMContentLoaded', () => setTimeout(hideVipLoader, 700));
             setTimeout(hideVipLoader, 900);
 
+            let tg = (window.Telegram && window.Telegram.WebApp) || {
             let tg = window.Telegram?.WebApp || {
                 initDataUnsafe: {},
                 expand: () => {},
@@ -1786,6 +1790,8 @@ app.get('/', (req, res) => {
             let uid = '123456789';
             try { uid = localStorage.getItem('vipHotTapUid') || uid; } catch(e) {}
             function refreshTelegramContext() {
+                if (window.Telegram && window.Telegram.WebApp) tg = window.Telegram.WebApp;
+                const realUid = tg.initDataUnsafe && tg.initDataUnsafe.user && tg.initDataUnsafe.user.id;
                 if (window.Telegram?.WebApp) tg = window.Telegram.WebApp;
                 const realUid = tg.initDataUnsafe?.user?.id;
                 if (realUid) {
@@ -1795,6 +1801,7 @@ app.get('/', (req, res) => {
                 const memo = document.getElementById('memoText');
                 window.uid = uid;
                 if (memo) memo.innerText = uid;
+                try { if (tg.expand) tg.expand(); if (tg.ready) tg.ready(); } catch(e) {}
                 try { tg.expand?.(); tg.ready?.(); } catch(e) {}
                 return uid;
             }
@@ -2060,6 +2067,8 @@ app.get('/', (req, res) => {
                     : (n===4) ? 'bnav-bank'
                     : (n===8) ? 'bnav-history'
                     : '';
+                const navEl = navId ? document.getElementById(navId) : null;
+                if (navEl) navEl.classList.add('active');
                 if (navId) document.getElementById(navId)?.classList.add('active');
                 if (n===1 || n===2) document.getElementById('bnav-main').classList.add('active');
                 else if (n===7 || n===9 || n===10 || n===11) document.getElementById('bnav-promo').classList.add('active');
@@ -2073,6 +2082,8 @@ app.get('/', (req, res) => {
                     if (n===2) document.querySelectorAll('.sub-tab-crash').forEach(e => e.classList.add('active'));
                 }
                 
+                if(n === 3) loadTop().catch(() => {});
+                if(n === 5 || n === 8) loadProfile().catch(() => {});
                 if(n === 3) loadTop().catch?.(() => {});
                 if(n === 5 || n === 8) loadProfile().catch?.(() => {});
                 
@@ -2096,6 +2107,7 @@ app.get('/', (req, res) => {
 
             async function copy(t) {
                 try {
+                    if (navigator.clipboard && navigator.clipboard.writeText) await navigator.clipboard.writeText(t);
                     if (navigator.clipboard?.writeText) await navigator.clipboard.writeText(t);
                     else {
                         const ta = document.createElement('textarea');
@@ -2174,6 +2186,7 @@ app.get('/', (req, res) => {
                 if(isSlotGame) return;
                 const betEl = document.getElementById('bet1');
                 const btn = document.getElementById('btnSpin');
+                const bet = Math.floor(Number(betEl ? betEl.value : 0));
                 const bet = Math.floor(Number(betEl?.value));
                 if(!Number.isFinite(bet) || bet < SLOT_MIN_BET) return gameAlert("Ошибка ставки");
                 if(bet > bal) return gameAlert("Мало 💎 ХОТ ТАП!");
@@ -2193,6 +2206,8 @@ app.get('/', (req, res) => {
                     
                     const s1 = document.getElementById('s1'); const s2 = document.getElementById('s2'); const s3 = document.getElementById('s3');
                     if(!s1 || !s2 || !s3) throw new Error('Slot reels not found');
+                    const reelBox = document.querySelector('.reel-cont');
+                    if (reelBox) reelBox.classList.remove('slots-win');
                     document.querySelector('.reel-cont')?.classList.remove('slots-win');
                     
                     s1.style.transition = 'none'; s1.style.transform = 'translateY(0)';
@@ -2458,7 +2473,7 @@ app.get('/', (req, res) => {
 
             function activatePromoFromProfile() {
                 const inp = document.getElementById('promoInput');
-                const code = (inp?.value || '').trim().toUpperCase();
+                const code = ((inp && inp.value) || '').trim().toUpperCase();
                 if(!code) return gameAlert("Введите промокод");
                 fetch('/api/promo', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({uid, promo:code})})
                 .then(r=>r.json()).then(d=>{
@@ -2548,6 +2563,16 @@ app.get('/', (req, res) => {
                 placeCrashBet, cashoutCrashGlobal, withdraw, activatePromoFromProfile,
                 openTaskChannel, checkChannelTask, spinBonusRoulette
             });
+            const navMain = document.getElementById('bnav-main');
+            if (navMain) navMain.addEventListener('click', (e) => { e.preventDefault(); goMain(); });
+            const navPromo = document.getElementById('bnav-promo');
+            if (navPromo) navPromo.addEventListener('click', (e) => { e.preventDefault(); sh(7); });
+            const navProfile = document.getElementById('bnav-profile');
+            if (navProfile) navProfile.addEventListener('click', (e) => { e.preventDefault(); sh(5); });
+            const navBank = document.getElementById('bnav-bank');
+            if (navBank) navBank.addEventListener('click', (e) => { e.preventDefault(); sh(4); });
+            const navHistory = document.getElementById('bnav-history');
+            if (navHistory) navHistory.addEventListener('click', (e) => { e.preventDefault(); sh(8); });
             document.getElementById('bnav-main')?.addEventListener('click', (e) => { e.preventDefault(); goMain(); });
             document.getElementById('bnav-promo')?.addEventListener('click', (e) => { e.preventDefault(); sh(7); });
             document.getElementById('bnav-profile')?.addEventListener('click', (e) => { e.preventDefault(); sh(5); });
