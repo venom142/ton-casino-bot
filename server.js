@@ -2038,13 +2038,29 @@ app.get('/', (req, res) => {
             let lastMainPage = 1;
 
             function sh(n) {
+                n = Number(n);
+                if (!Number.isFinite(n)) n = 1;
                 if(n === 1 || n === 2) lastMainPage = n;
 
-                document.querySelectorAll('.page').forEach(e => e.classList.remove('active'));
+                document.querySelectorAll('.page').forEach(e => {
+                    e.classList.remove('active');
+                    e.style.display = 'none';
+                });
                 const pg = document.getElementById('pg'+n);
-                if(pg) pg.classList.add('active');
+                if(pg) {
+                    pg.classList.add('active');
+                    pg.style.display = 'block';
+                    pg.scrollTop = 0;
+                }
 
                 document.querySelectorAll('.bottom-nav-item').forEach(e => e.classList.remove('active'));
+                const navId = (n===1 || n===2) ? 'bnav-main'
+                    : (n===7 || n===9 || n===10 || n===11) ? 'bnav-promo'
+                    : (n===5 || n===3 || n===6) ? 'bnav-profile'
+                    : (n===4) ? 'bnav-bank'
+                    : (n===8) ? 'bnav-history'
+                    : '';
+                if (navId) document.getElementById(navId)?.classList.add('active');
                 if (n===1 || n===2) document.getElementById('bnav-main').classList.add('active');
                 else if (n===7 || n===9 || n===10 || n===11) document.getElementById('bnav-promo').classList.add('active');
                 else if (n===5 || n===3 || n===6) document.getElementById('bnav-profile').classList.add('active');
@@ -2057,8 +2073,8 @@ app.get('/', (req, res) => {
                     if (n===2) document.querySelectorAll('.sub-tab-crash').forEach(e => e.classList.add('active'));
                 }
                 
-                if(n === 3) loadTop();
-                if(n === 5 || n === 8) loadProfile();
+                if(n === 3) loadTop().catch?.(() => {});
+                if(n === 5 || n === 8) loadProfile().catch?.(() => {});
                 
                 if(n === 2) {
                     if(!crashPollInterval) crashPollInterval = setInterval(pollCrashState, 500);
@@ -2532,6 +2548,12 @@ app.get('/', (req, res) => {
                 placeCrashBet, cashoutCrashGlobal, withdraw, activatePromoFromProfile,
                 openTaskChannel, checkChannelTask, spinBonusRoulette
             });
+            document.getElementById('bnav-main')?.addEventListener('click', (e) => { e.preventDefault(); goMain(); });
+            document.getElementById('bnav-promo')?.addEventListener('click', (e) => { e.preventDefault(); sh(7); });
+            document.getElementById('bnav-profile')?.addEventListener('click', (e) => { e.preventDefault(); sh(5); });
+            document.getElementById('bnav-bank')?.addEventListener('click', (e) => { e.preventDefault(); sh(4); });
+            document.getElementById('bnav-history')?.addEventListener('click', (e) => { e.preventDefault(); sh(8); });
+            sh(1);
 
             let syncTimer = null;
             function startVipApp() {
