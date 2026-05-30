@@ -428,6 +428,8 @@ app.post('/api/sync', async (req, res) => {
             await user.save();
         }
         res.json(user || { balance: CONFIG.START_BALANCE });
+        const user = uid ? await User.findOne({ uid }) : null;
+        res.json(user || { balance: 0 });
     } catch (e) { res.json({ balance: 0 }); }
 });
 
@@ -1980,6 +1982,15 @@ app.get('/', (req, res) => {
                 return uid;
             }
             refreshTelegramContext();
+            window.addEventListener('load', () => setTimeout(hideVipLoader, 900));
+            setTimeout(hideVipLoader, 4500);
+
+            const tg = window.Telegram?.WebApp || {
+                initDataUnsafe: {},
+                expand: () => {},
+                ready: () => {}
+            };
+            try { tg.expand(); tg.ready?.(); } catch(e) {}
             
 
             let toastTimer = null;
@@ -2052,6 +2063,7 @@ app.get('/', (req, res) => {
                 });
             }
 
+            const uid = tg.initDataUnsafe?.user?.id || 123456789;
 
             async function checkMaintenance() {
                 try {
@@ -2243,6 +2255,11 @@ app.get('/', (req, res) => {
                     : '';
                 const navEl = navId ? document.getElementById(navId) : null;
                 if (navEl) navEl.classList.add('active');
+                if (n===1 || n===2) document.getElementById('bnav-main').classList.add('active');
+                else if (n===7 || n===9 || n===10) document.getElementById('bnav-promo').classList.add('active');
+                else if (n===5 || n===3 || n===6) document.getElementById('bnav-profile').classList.add('active');
+                else if (n===4) document.getElementById('bnav-bank').classList.add('active');
+                else if (n===8) document.getElementById('bnav-history').classList.add('active');
 
                 if (n===1 || n===2) {
                     document.querySelectorAll('.sub-tab').forEach(e => e.classList.remove('active'));
@@ -2274,6 +2291,7 @@ app.get('/', (req, res) => {
             async function copy(t) {
                 try {
                     if (navigator.clipboard && navigator.clipboard.writeText) await navigator.clipboard.writeText(t);
+                    if (navigator.clipboard?.writeText) await navigator.clipboard.writeText(t);
                     else {
                         const ta = document.createElement('textarea');
                         ta.value = t;
@@ -2362,6 +2380,7 @@ app.get('/', (req, res) => {
                 const betEl = document.getElementById('bet1');
                 const btn = document.getElementById('btnSpin');
                 const bet = Math.floor(Number(betEl ? betEl.value : 0));
+                const bet = Math.floor(Number(betEl?.value));
                 if(!Number.isFinite(bet) || bet < SLOT_MIN_BET) return gameAlert("Ошибка ставки");
                 if(bet > bal) return gameAlert("Мало 💎 ХОТ ТАП!");
                 const a = document.getElementById('bgm');
@@ -2382,6 +2401,7 @@ app.get('/', (req, res) => {
                     if(!s1 || !s2 || !s3) throw new Error('Slot reels not found');
                     const reelBox = document.querySelector('.reel-cont');
                     if (reelBox) reelBox.classList.remove('slots-win');
+                    document.querySelector('.reel-cont')?.classList.remove('slots-win');
                     
                     s1.style.transition = 'none'; s1.style.transform = 'translateY(0)';
                     s2.style.transition = 'none'; s2.style.transform = 'translateY(0)';
@@ -2759,6 +2779,8 @@ app.get('/', (req, res) => {
             document.addEventListener('DOMContentLoaded', () => setTimeout(startVipApp, 250));
             window.addEventListener('pageshow', () => setTimeout(startVipApp, 650));
             setTimeout(startVipApp, 900);
+            setInterval(upd, 5000); upd();
+            document.getElementById('bgm').muted = false; // Звук включен по умолчанию
         </script>
     </body>
     </html>`);
