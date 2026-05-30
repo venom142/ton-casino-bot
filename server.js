@@ -681,7 +681,7 @@ app.get('/', (req, res) => {
     <head>
         <meta charset="UTF-8">
         <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no">
-        <script src="https://telegram.org/js/telegram-web-app.js"></script>
+        <script defer src="https://telegram.org/js/telegram-web-app.js"></script>
         <link href="https://fonts.googleapis.com/css2?family=Montserrat:wght@700;900&display=swap" rel="stylesheet">
         <style>
             :root { --neon-cyan: #00f0ff; --neon-magenta: #ff00ff; --gold: #FFD700; --dark: #0a0a0c; }
@@ -1170,11 +1170,16 @@ app.get('/', (req, res) => {
                 color: #fff;
                 overflow: hidden;
                 transition: opacity .45s ease, visibility .45s ease;
+                animation: loaderFailsafeHide .45s ease 6s forwards;
             }
             #vipLoader.hide {
                 opacity: 0;
                 visibility: hidden;
                 pointer-events: none;
+                animation: none;
+            }
+            @keyframes loaderFailsafeHide {
+                to { opacity: 0; visibility: hidden; pointer-events: none; }
             }
             #vipLoader::before {
                 content: "";
@@ -1745,13 +1750,17 @@ app.get('/', (req, res) => {
 
         <script>
 
+            let vipLoaderRemoved = false;
             function hideVipLoader() {
                 const loader = document.getElementById('vipLoader');
-                if (!loader) return;
+                if (!loader || vipLoaderRemoved) return;
+                vipLoaderRemoved = true;
                 loader.classList.add('hide');
                 setTimeout(() => loader.remove(), 650);
             }
-            window.addEventListener('load', () => setTimeout(hideVipLoader, 900));
+            window.addEventListener('load', () => setTimeout(hideVipLoader, 500));
+            window.addEventListener('pageshow', () => setTimeout(hideVipLoader, 1200));
+            document.addEventListener('DOMContentLoaded', () => setTimeout(hideVipLoader, 1800));
             setTimeout(hideVipLoader, 4500);
 
             const tg = window.Telegram?.WebApp || {
