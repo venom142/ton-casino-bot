@@ -58,6 +58,7 @@ const User = mongoose.model('User', {
     last_lt: { type: String, default: "0" },
     used_promos: [String],
     completed_tasks: [String],
+    last_roulette_at: { type: Date, default: null },
     last_active: { type: Date, default: Date.now },
     notified_inactive: { type: Boolean, default: false },
     history: [{
