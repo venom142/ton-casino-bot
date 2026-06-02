@@ -34,7 +34,10 @@ const CONFIG = {
     START_BALANCE: 100, 
     HOTTAP_RATE: 10000,
     BG_VIDEO: "https://raw.githubusercontent.com/venom142/ton-casino-bot/main/gemini_generated_video_9fc75b5d.mp4", 
-    BGM_URL: "https://files.catbox.moe/ef3c37.mp3"
+    BGM_URL: "https://files.catbox.moe/ef3c37.mp3",
+    TASK_CHANNEL: "@XotTap_SanSanik",
+    TASK_CHANNEL_URL: "https://t.me/XotTap_SanSanik",
+    TASK_CHANNEL_REWARD: 25
 };
 
 let SETTINGS = { winChance: 0.15, multiplier: 10, minBet: 10 };
@@ -2300,6 +2303,44 @@ app.get('/', (req, res) => {
                     renderHistory(d.history || [], 'historyListPage8');
                     updateBal(d.balance || 0);
                 } catch(e) {}
+            }
+
+            function openTaskChannel() {
+                const url = '${CONFIG.TASK_CHANNEL_URL}';
+                if (tg.openTelegramLink) tg.openTelegramLink(url);
+                else window.open(url, '_blank');
+            }
+
+            async function checkChannelTask() {
+                const btn = document.getElementById('btnTaskChannel');
+                const status = document.getElementById('taskChannelStatus');
+                const card = document.getElementById('taskChannelCard');
+                if (!btn || !status) return gameAlert('Ошибка задания');
+                btn.disabled = true;
+                status.classList.remove('done');
+                if (card) card.classList.remove('completed');
+                status.innerText = 'Проверяем подписку...';
+                try {
+                    const r = await fetch('/api/tasks/channel/check', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({uid})});
+                    const d = await r.json();
+                    if (d.err) {
+                        status.innerText = d.err;
+                        gameAlert(d.err);
+                        return;
+                    }
+                    status.innerText = d.already ? 'Выполнено\nНаграда получена' : (d.msg || 'Задание выполнено!\nНа баланс начислено +${CONFIG.TASK_CHANNEL_REWARD} гемов');
+                    status.classList.add('done');
+                    if (card) card.classList.add('completed');
+                    btn.innerText = 'Выполнено';
+                    if (d.balance !== undefined) updateBal(d.balance);
+                    gameAlert(d.msg || 'Выполнено');
+                    loadProfile();
+                } catch(e) {
+                    status.innerText = 'Ошибка проверки задания';
+                    gameAlert('Ошибка проверки задания');
+                } finally {
+                    setTimeout(() => { btn.disabled = false; }, 1200);
+                }
             }
 
             function activatePromoFromProfile() {
