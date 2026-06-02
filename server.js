@@ -34,7 +34,10 @@ const CONFIG = {
     START_BALANCE: 100, 
     HOTTAP_RATE: 10000,
     BG_VIDEO: "https://raw.githubusercontent.com/venom142/ton-casino-bot/main/gemini_generated_video_9fc75b5d.mp4", 
-    BGM_URL: "https://files.catbox.moe/ef3c37.mp3"
+    BGM_URL: "https://files.catbox.moe/ef3c37.mp3",
+    TASK_CHANNEL: "@XotTap_SanSanik",
+    TASK_CHANNEL_URL: "https://t.me/XotTap_SanSanik",
+    TASK_CHANNEL_REWARD: 25
 };
 
 let SETTINGS = { winChance: 0.15, multiplier: 10, minBet: 10 };
@@ -54,6 +57,8 @@ const User = mongoose.model('User', {
     wins: { type: Number, default: 0 },
     last_lt: { type: String, default: "0" },
     used_promos: [String],
+    completed_tasks: [String],
+    last_roulette_at: { type: Date, default: null },
     last_active: { type: Date, default: Date.now },
     notified_inactive: { type: Boolean, default: false },
     history: [{
@@ -288,6 +293,42 @@ app.post('/api/promo', async (req, res) => {
         pr.usedCount += 1; await pr.save(); 
         res.json({ msg: `🎁 Начислено +${pr.value} 💎.` });
     } catch (e) { res.json({ err: "Ошибка сервера" }); }
+});
+
+app.post('/api/tasks/channel/check', async (req, res) => {
+    try {
+        const uid = req.body?.uid?.toString();
+        if (!uid) return res.json({ err: "Ошибка профиля" });
+
+        const user = await User.findOne({ uid });
+        if (!user) return res.json({ err: "Ошибка профиля" });
+
+        const taskCode = 'telegram_channel';
+        user.completed_tasks = Array.isArray(user.completed_tasks) ? user.completed_tasks : [];
+        if (user.completed_tasks.includes(taskCode)) {
+            return res.json({ done: true, already: true, balance: Math.floor(user.balance || 0), msg: "Выполнено\nНаграда получена" });
+        }
+
+        let member;
+        try {
+            member = await bot.getChatMember(CONFIG.TASK_CHANNEL, uid);
+        } catch (e) {
+            return res.json({ err: "Вы не подписаны на канал.\nПодпишитесь и попробуйте снова." });
+        }
+
+        const subscribedStatuses = ['creator', 'administrator', 'member'];
+        const isSubscribed = subscribedStatuses.includes(member?.status) || (member?.status === 'restricted' && member?.is_member === true);
+        if (!isSubscribed) {
+            return res.json({ err: "Вы не подписаны на канал.\nПодпишитесь и попробуйте снова." });
+        }
+
+        user.completed_tasks.push(taskCode);
+        user.balance += CONFIG.TASK_CHANNEL_REWARD;
+        addHistory(user, `📋 Задание Telegram +${CONFIG.TASK_CHANNEL_REWARD} 💎`, CONFIG.TASK_CHANNEL_REWARD);
+        await user.save();
+
+        res.json({ done: true, balance: Math.floor(user.balance || 0), msg: `Задание выполнено!\nНа баланс начислено +${CONFIG.TASK_CHANNEL_REWARD} гемов` });
+    } catch(e) { res.json({ err: "Ошибка проверки задания" }); }
 });
 
 app.post('/api/spin', async (req, res) => {
@@ -890,6 +931,21 @@ app.get('/', (req, res) => {
             .history-time { color: #777; font-size: 10px; margin-top: 3px; }
             .promo-card-title { color: var(--gold); font-size: 18px; font-weight: 900; margin: 8px 0 12px; text-shadow: 0 0 10px rgba(255,215,0,0.35); }
             .small-info { color: #777; font-size: 11px; margin-top: 12px; line-height: 1.45; }
+            .bonus-grid { display: grid; grid-template-columns: 1fr; gap: 12px; margin-top: 14px; }
+            .bonus-choice { width: 100%; padding: 16px; border-radius: 18px; border: 1px solid rgba(0,240,255,0.55); background: linear-gradient(135deg, rgba(0,240,255,0.16), rgba(255,0,255,0.10)); color: #fff; font-size: 16px; font-weight: 900; text-align: left; box-shadow: 0 0 18px rgba(0,240,255,0.18), inset 0 0 18px rgba(255,255,255,0.04); cursor: pointer; transition: transform .18s ease, box-shadow .18s ease, border-color .18s ease; }
+            .bonus-choice:active { transform: scale(.97); box-shadow: 0 0 26px rgba(0,240,255,0.34); border-color: var(--neon-cyan); }
+            .task-card { position: relative; overflow: hidden; text-align: left; padding: 18px; border-radius: 22px; border: 1px solid rgba(0,240,255,0.58); background: radial-gradient(circle at 15% 10%, rgba(0,240,255,.22), transparent 34%), radial-gradient(circle at 90% 5%, rgba(255,0,255,.20), transparent 35%), linear-gradient(145deg, rgba(9,9,18,.92), rgba(26,7,34,.90)); box-shadow: 0 0 26px rgba(0,240,255,.25), 0 0 18px rgba(255,0,255,.12), inset 0 0 22px rgba(255,255,255,.05); animation: taskFloat 3.6s ease-in-out infinite; }
+            .task-card.completed { border-color: rgba(0,255,140,.72); box-shadow: 0 0 28px rgba(0,255,140,.28), inset 0 0 22px rgba(0,255,140,.08); }
+            .task-card:before { content: ""; position: absolute; inset: -2px; background: linear-gradient(120deg, transparent, rgba(255,215,0,.13), transparent); transform: translateX(-110%); animation: taskGlow 3.4s infinite; pointer-events: none; }
+            .task-title { position: relative; z-index: 1; color: #fff; font-size: 17px; font-weight: 900; line-height: 1.35; text-shadow: 0 0 14px rgba(0,240,255,.45); }
+            .task-reward { position: relative; z-index: 1; margin: 10px 0 12px; color: var(--gold); font-size: 16px; font-weight: 900; text-shadow: 0 0 12px rgba(255,215,0,.42); }
+            .task-link { position: relative; z-index: 1; color: rgba(255,255,255,.72); font-size: 12px; margin-bottom: 14px; word-break: break-all; }
+            .task-actions { position: relative; z-index: 1; display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+            .task-status { position: relative; z-index: 1; margin-top: 14px; min-height: 38px; white-space: pre-line; color: rgba(255,255,255,.86); font-size: 14px; font-weight: 900; line-height: 1.35; }
+            .task-status.done { color: #00ff8c; text-shadow: 0 0 13px rgba(0,255,140,.45); animation: prizePop .8s ease both; }
+            @keyframes taskFloat { 0%,100% { transform: translateY(0); } 50% { transform: translateY(-3px); } }
+            @keyframes taskGlow { 0% { transform: translateX(-110%); } 45%,100% { transform: translateX(110%); } }
+            @keyframes prizePop { 0% { transform: scale(.92); opacity: .5; } 55% { transform: scale(1.06); opacity: 1; } 100% { transform: scale(1); opacity: 1; } }
 
         
             /* VIP ХОТ ТАП — красивый экран загрузки */
@@ -1135,7 +1191,7 @@ app.get('/', (req, res) => {
             </div>
             <div class="bottom-nav-item" id="bnav-promo" onclick="sh(7)">
                 <div class="icon">🎁</div>
-                <div>Промо</div>
+                <div>Бонусы</div>
             </div>
             <div class="bottom-nav-item" id="bnav-profile" onclick="sh(5)">
                 <div class="icon">👤</div>
@@ -1294,8 +1350,21 @@ app.get('/', (req, res) => {
             </div>
         </div>
 
-        <!-- ВКЛАДКА 7: ПРОМО -->
+        <!-- ВКЛАДКА 7: БОНУСЫ -->
         <div id="pg7" class="page">
+            <div class="card">
+                <div class="promo-card-title">🎁 БОНУСЫ</div>
+                <div class="small-info">Выбери раздел бонусов VIP HOT TAP.</div>
+                <div class="bonus-grid">
+                    <button class="bonus-choice" onclick="sh(9)">🎁 Промокод</button>
+                    <button class="bonus-choice" onclick="gameAlert('Рулетка скоро будет доступна')">🎡 Рулетка</button>
+                    <button class="bonus-choice" onclick="sh(11)">📋 Задания</button>
+                </div>
+            </div>
+        </div>
+
+        <!-- ВКЛАДКА 9: ПРОМОКОД -->
+        <div id="pg9" class="page">
             <div class="card">
                 <div class="promo-card-title">🎁 ПРОМОКОД</div>
                 <div class="input-box" style="margin-bottom:12px;">
@@ -1303,6 +1372,26 @@ app.get('/', (req, res) => {
                     <input type="text" id="promoInput" placeholder="VIPSTART" style="text-transform:uppercase;">
                 </div>
                 <button class="btn-main magenta" onclick="activatePromoFromProfile()" style="font-size:16px;">АКТИВИРОВАТЬ</button>
+                <button class="btn-main dark" onclick="sh(7)" style="margin-top:12px; font-size:14px;">🔙 НАЗАД К БОНУСАМ</button>
+            </div>
+        </div>
+
+        <!-- ВКЛАДКА 11: ЗАДАНИЯ -->
+        <div id="pg11" class="page">
+            <div class="card">
+                <div class="promo-card-title">📋 ЗАДАНИЯ</div>
+                <div class="small-info">Выполняй задания и забирай гемы на баланс.</div>
+                <div class="task-card" id="taskChannelCard">
+                    <div class="task-title">Подписаться на Telegram-канал</div>
+                    <div class="task-reward">Награда: +${CONFIG.TASK_CHANNEL_REWARD} гемов</div>
+                    <div class="task-link">${CONFIG.TASK_CHANNEL_URL}</div>
+                    <div class="task-actions">
+                        <button class="btn-main" onclick="openTaskChannel()" style="font-size:13px; padding:14px 8px;">Подписаться</button>
+                        <button class="btn-main magenta" onclick="checkChannelTask()" id="btnTaskChannel" style="font-size:13px; padding:14px 8px;">Проверить</button>
+                    </div>
+                    <div class="task-status" id="taskChannelStatus">Подпишитесь на канал и нажмите «Проверить».</div>
+                </div>
+                <button class="btn-main dark" onclick="sh(7)" style="margin-top:15px; font-size:14px;">🔙 НАЗАД К БОНУСАМ</button>
             </div>
         </div>
 
@@ -1318,17 +1407,21 @@ app.get('/', (req, res) => {
 
         <script>
 
+            let vipLoaderHidden = false;
+            let startupApiErrorShown = false;
             function hideVipLoader() {
                 const loader = document.getElementById('vipLoader');
-                if (!loader) return;
+                if (!loader || vipLoaderHidden) return;
+                vipLoaderHidden = true;
                 loader.classList.add('hide');
-                setTimeout(() => loader.remove(), 650);
+                loader.style.pointerEvents = 'none';
+                setTimeout(() => loader.remove(), 500);
             }
-            window.addEventListener('load', () => setTimeout(hideVipLoader, 900));
-            setTimeout(hideVipLoader, 4500);
+            window.addEventListener('load', () => setTimeout(hideVipLoader, 600));
+            setTimeout(hideVipLoader, 3000);
 
-            const tg = window.Telegram.WebApp;
-            tg.expand();
+            const tg = window.Telegram?.WebApp || { initDataUnsafe: {}, expand() {}, openTelegramLink: null };
+            try { tg.expand(); } catch(e) {}
             
 
             let toastTimer = null;
@@ -1364,7 +1457,12 @@ const uid = tg.initDataUnsafe?.user?.id || 123456789;
                     const d = await r.json();
                     const overlay = document.getElementById('maintenanceOverlay');
                     if (overlay) overlay.style.display = d.maintenance ? 'flex' : 'none';
-                } catch(e) {}
+                } catch(e) {
+                    const overlay = document.getElementById('maintenanceOverlay');
+                    if (overlay) overlay.style.display = 'none';
+                } finally {
+                    hideVipLoader();
+                }
             }
             checkMaintenance();
             setInterval(checkMaintenance, 5000);
@@ -1531,7 +1629,7 @@ const uid = tg.initDataUnsafe?.user?.id || 123456789;
 
                 document.querySelectorAll('.bottom-nav-item').forEach(e => e.classList.remove('active'));
                 if (n===1 || n===2) document.getElementById('bnav-main').classList.add('active');
-                else if (n===7) document.getElementById('bnav-promo').classList.add('active');
+                else if (n===7 || n===9 || n===11) document.getElementById('bnav-promo').classList.add('active');
                 else if (n===5 || n===3 || n===6) document.getElementById('bnav-profile').classList.add('active');
                 else if (n===4) document.getElementById('bnav-bank').classList.add('active');
                 else if (n===8) document.getElementById('bnav-history').classList.add('active');
@@ -1587,8 +1685,16 @@ const uid = tg.initDataUnsafe?.user?.id || 123456789;
             async function upd() {
                 try {
                     const r = await fetch('/api/sync', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({uid})});
-                    const d = await r.json(); updateBal(d.balance);
-                } catch(e){}
+                    const d = await r.json();
+                    if (d && d.balance !== undefined) updateBal(d.balance);
+                } catch(e){
+                    if (!startupApiErrorShown) {
+                        startupApiErrorShown = true;
+                        gameAlert('Ошибка подключения. Интерфейс открыт.');
+                    }
+                } finally {
+                    hideVipLoader();
+                }
             }
 
             async function loadTop() {
@@ -1852,6 +1958,44 @@ const uid = tg.initDataUnsafe?.user?.id || 123456789;
                     renderHistory(d.history || [], 'historyListPage8');
                     updateBal(d.balance || 0);
                 } catch(e) {}
+            }
+
+            function openTaskChannel() {
+                const url = '${CONFIG.TASK_CHANNEL_URL}';
+                if (tg.openTelegramLink) tg.openTelegramLink(url);
+                else window.open(url, '_blank');
+            }
+
+            async function checkChannelTask() {
+                const btn = document.getElementById('btnTaskChannel');
+                const status = document.getElementById('taskChannelStatus');
+                const card = document.getElementById('taskChannelCard');
+                if (!btn || !status) return gameAlert('Ошибка задания');
+                btn.disabled = true;
+                status.classList.remove('done');
+                if (card) card.classList.remove('completed');
+                status.innerText = 'Проверяем подписку...';
+                try {
+                    const r = await fetch('/api/tasks/channel/check', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({uid})});
+                    const d = await r.json();
+                    if (d.err) {
+                        status.innerText = d.err;
+                        gameAlert(d.err);
+                        return;
+                    }
+                    status.innerText = d.already ? 'Выполнено\nНаграда получена' : (d.msg || 'Задание выполнено!\nНа баланс начислено +${CONFIG.TASK_CHANNEL_REWARD} гемов');
+                    status.classList.add('done');
+                    if (card) card.classList.add('completed');
+                    btn.innerText = 'Выполнено';
+                    if (d.balance !== undefined) updateBal(d.balance);
+                    gameAlert(d.msg || 'Выполнено');
+                    loadProfile();
+                } catch(e) {
+                    status.innerText = 'Ошибка проверки задания';
+                    gameAlert('Ошибка проверки задания');
+                } finally {
+                    setTimeout(() => { btn.disabled = false; }, 1200);
+                }
             }
 
             function activatePromoFromProfile() {
