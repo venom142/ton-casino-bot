@@ -4,6 +4,12 @@ const TelegramBot = require('node-telegram-bot-api');
 const mongoose = require('mongoose');
 const axios = require('axios');
 
+const { CONFIG } = require('./config');
+const state = require('./state');
+const User = require('./models/User');
+const Promo = require('./models/Promo');
+const { addHistory, safeUid } = require('./utils/helpers');
+
 // ==========================================
 // 🛡 АНТИ-КРАШ СИСТЕМА
 // ==========================================
@@ -25,63 +31,11 @@ const app = express();
 app.use(express.json());
 
 // ==========================================
-// ⚙️ НАСТРОЙКИ КАЗИНО
-// ==========================================
-const CONFIG = {
-    ADMIN_ID: 8475323865, 
-    WALLET: "UQDoTj0hCwJbI-9fziRCyUZzO2XHmtcDzuiAiGjxG21G3dIX", 
-    TON_KEY: process.env.TON_KEY, 
-    START_BALANCE: 100, 
-    HOTTAP_RATE: 10000,
-    BG_VIDEO: "https://raw.githubusercontent.com/venom142/ton-casino-bot/main/gemini_generated_video_9fc75b5d.mp4", 
-    BGM_URL: "https://files.catbox.moe/ef3c37.mp3"
-};
-
-let SETTINGS = { winChance: 0.15, multiplier: 10, minBet: 10 };
-let MAINTENANCE_MODE = false;
-
-// ==========================================
 // 🗄 БАЗА ДАННЫХ
 // ==========================================
 mongoose.connect(process.env.MONGO_URI)
     .then(() => console.log("💎 MongoDB подключена!"))
     .catch(err => console.error("❌ Ошибка БД:", err.message));
-
-const User = mongoose.model('User', { 
-    uid: String, 
-    balance: { type: Number, default: CONFIG.START_BALANCE },
-    spins: { type: Number, default: 0 }, 
-    wins: { type: Number, default: 0 },
-    last_lt: { type: String, default: "0" },
-    used_promos: [String],
-    last_roulette_at: { type: Date, default: null },
-    last_active: { type: Date, default: Date.now },
-    notified_inactive: { type: Boolean, default: false },
-    history: [{
-        text: String,
-        amount: Number,
-        createdAt: { type: Date, default: Date.now }
-    }]
-});
-
-const Promo = mongoose.model('Promo', {
-    code: String, value: Number, limit: Number, usedCount: { type: Number, default: 0 }
-});
-
-function addHistory(user, text, amount = 0) {
-    if (!user) return;
-    if (!Array.isArray(user.history)) user.history = [];
-    user.history.unshift({
-        text: text,
-        amount: Math.floor(Number(amount) || 0),
-        createdAt: new Date()
-    });
-    user.history = user.history.slice(0, 20);
-}
-
-function safeUid(uid) {
-    return uid === undefined || uid === null ? '' : String(uid).trim();
-}
 
 // ==========================================
 // 🤖 ТЕЛЕГРАМ БОТ (АДМИНКА)
@@ -92,20 +46,20 @@ const adminState = {};
 bot.onText(/\/start/, async (msg) => {
     const uid = msg.from.id.toString();
     await User.findOneAndUpdate({ uid }, { uid }, { upsert: true, setDefaultsOnInsert: true });
-    
+
     let kb = [[{ text: "🎰 ВОЙТИ В VIP ЗАЛ", web_app: { url: process.env.APP_URL || "https://google.com" } }]];
     if (msg.from.id === CONFIG.ADMIN_ID) kb.push([{ text: "👑 ПАНЕЛЬ ВЛАДЕЛЬЦА", callback_data: "admin_menu" }]);
-    
+
     bot.sendMessage(msg.chat.id, `💎 **VIP ХОТ ТАП**\nБонус за старт: **${CONFIG.START_BALANCE} 💎**\nТвой ID: \`${uid}\``, { parse_mode: 'Markdown', reply_markup: { inline_keyboard: kb } });
 });
 
 bot.on('callback_query', async (q) => {
     if (q.from.id !== CONFIG.ADMIN_ID) return;
-    
+
     if (q.data.startsWith('withdraw_ok_')) {
         const [, , uid, amountStr] = q.data.split('_');
         const amount = parseInt(amountStr);
-        
+
         bot.editMessageReplyMarkup({ inline_keyboard: [] }, { chat_id: q.message.chat.id, message_id: q.message.message_id });
 
         const user = await User.findOne({ uid });
@@ -127,7 +81,7 @@ bot.on('callback_query', async (q) => {
 
     if (q.data.startsWith('withdraw_no_')) {
         const [, , uid] = q.data.split('_');
-        
+
         bot.editMessageReplyMarkup({ inline_keyboard: [] }, { chat_id: q.message.chat.id, message_id: q.message.message_id });
 
         bot.sendMessage(uid, "❌ Заявка на вывод отклонена.").catch(()=>{});
@@ -136,7 +90,7 @@ bot.on('callback_query', async (q) => {
     }
 
     if (q.data === "admin_menu") {
-        bot.sendMessage(q.message.chat.id, `👑 **Админка**\n\n⚙️ Шанс: **${Math.round(SETTINGS.winChance * 100)}%**\n✖️ Икс: **x${SETTINGS.multiplier}**`, {
+        bot.sendMessage(q.message.chat.id, `👑 **Админка**\n\n⚙️ Шанс: **${Math.round(state.SETTINGS.winChance * 100)}%**\n✖️ Икс: **x${state.SETTINGS.multiplier}**`, {
             parse_mode: 'Markdown',
             reply_markup: { inline_keyboard: [
                 [{ text: "📢 Рассылка", callback_data: "adm_msg" }, { text: "💰 Баланс", callback_data: "adm_bal" }],
@@ -152,10 +106,10 @@ bot.on('callback_query', async (q) => {
         bot.sendMessage(q.message.chat.id, `📊 Игроков: **${users}**\n🎁 Активных промо: **${promos}**`, { parse_mode: 'Markdown' });
     }
     if (q.data === "adm_maintenance") {
-        MAINTENANCE_MODE = !MAINTENANCE_MODE;
+        state.MAINTENANCE_MODE = !state.MAINTENANCE_MODE;
         bot.sendMessage(
             q.message.chat.id,
-            MAINTENANCE_MODE ? "🛠 Техперерыв включён. WebApp закрыт экраном техработ." : "✅ Техперерыв выключен. WebApp снова доступен."
+            state.MAINTENANCE_MODE ? "🛠 Техперерыв включён. WebApp закрыт экраном техработ." : "✅ Техперерыв выключен. WebApp снова доступен."
         );
     }
     if (q.data === "adm_set_chance") { adminState[q.from.id] = 'set_chance'; bot.sendMessage(q.message.chat.id, "Введите шанс (0.01 - 1.00):"); }
@@ -176,8 +130,8 @@ bot.on('callback_query', async (q) => {
 bot.on('message', async (msg) => {
     const s = adminState[msg.from.id]; if (!s || msg.text?.startsWith('/')) return;
     try {
-        if (s === 'set_chance') { SETTINGS.winChance = parseFloat(msg.text); bot.sendMessage(msg.chat.id, `✅ Готово!`); delete adminState[msg.from.id]; }
-        else if (s === 'set_mult') { SETTINGS.multiplier = parseFloat(msg.text); bot.sendMessage(msg.chat.id, `✅ Готово!`); delete adminState[msg.from.id]; }
+        if (s === 'set_chance') { state.SETTINGS.winChance = parseFloat(msg.text); bot.sendMessage(msg.chat.id, `✅ Готово!`); delete adminState[msg.from.id]; }
+        else if (s === 'set_mult') { state.SETTINGS.multiplier = parseFloat(msg.text); bot.sendMessage(msg.chat.id, `✅ Готово!`); delete adminState[msg.from.id]; }
         else if (s === 'msg') { const users = await User.find(); for (let u of users) { try { await bot.sendMessage(u.uid, msg.text); } catch(e) {} } bot.sendMessage(msg.chat.id, "✅ Разослано!"); delete adminState[msg.from.id]; } 
         else if (s === 'bal_id') { adminState[msg.from.id] = `bal_v_${msg.text}`; bot.sendMessage(msg.chat.id, "Сумма (в 💎):"); }
         else if (s.startsWith('bal_v_')) {
@@ -236,397 +190,16 @@ app.use('/api', async (req, res, next) => {
 });
 
 app.get('/api/maintenance', (req, res) => {
-    res.json({ maintenance: MAINTENANCE_MODE });
+    res.json({ maintenance: state.MAINTENANCE_MODE });
 });
 
-app.post('/api/sync', async (req, res) => {
-    try {
-        const uid = safeUid(req.body?.uid);
-        const user = uid ? await User.findOne({ uid }) : null;
-        res.json(user || { balance: 0 });
-    } catch (e) { res.json({ balance: 0 }); }
-});
-
-app.post('/api/profile', async (req, res) => {
-    try {
-        const uid = safeUid(req.body?.uid);
-        if (!uid) return res.json({ err: "Ошибка профиля" });
-        const user = await User.findOne({ uid });
-        if (!user) return res.json({ err: "Ошибка профиля" });
-
-        res.json({
-            uid: user.uid,
-            balance: Math.floor(user.balance || 0),
-            spins: user.spins || 0,
-            wins: user.wins || 0,
-            promos: user.used_promos ? user.used_promos.length : 0,
-            lastActive: user.last_active || null,
-            version: "VIP ХОТ ТАП Alpha 1.0",
-            history: (user.history || []).slice(0, 10).map(h => ({
-                text: h.text,
-                amount: h.amount || 0,
-                createdAt: h.createdAt
-            }))
-        });
-    } catch (e) {
-        res.json({ err: "Ошибка профиля" });
-    }
-});
-
-app.post('/api/leaderboard', async (req, res) => {
-    try {
-        const tops = await User.find().sort({ balance: -1 }).limit(10);
-        res.json(tops.map(u => {
-            const uid = safeUid(u.uid) || 'player';
-            return { uid: uid.substring(0, 3) + "***" + uid.substring(Math.max(uid.length - 2, 0)), balance: Math.floor(u.balance || 0) };
-        }));
-    } catch (e) { res.json([]); }
-});
-
-app.post('/api/promo', async (req, res) => {
-    try {
-        const { uid, promo } = req.body; const p = promo?.toUpperCase();
-        const uidStr = safeUid(uid);
-        if (!uidStr) return res.json({ err: "Ошибка профиля" });
-        const user = await User.findOne({ uid: uidStr });
-        if (!user) return res.json({ err: "Ошибка профиля" });
-        const pr = await Promo.findOne({ code: p });
-        if (!pr) return res.json({ err: "❌ Неверный промокод!" });
-        if (user.used_promos.includes(p)) return res.json({ err: "⚠️ Вы уже использовали этот код!" });
-        if (pr.usedCount >= pr.limit) return res.json({ err: "🚫 Лимит исчерпан!" });
-        user.balance += pr.value;
-        user.used_promos.push(p);
-        addHistory(user, `🎁 Промо +${pr.value} 💎`, pr.value);
-        await user.save();
-        pr.usedCount += 1; await pr.save(); 
-        res.json({ msg: `🎁 Начислено +${pr.value} 💎.` });
-    } catch (e) { res.json({ err: "Ошибка сервера" }); }
-});
-
-app.post('/api/roulette', async (req, res) => {
-    try {
-        const { uid } = req.body;
-        const uidStr = safeUid(uid);
-        if (!uidStr) return res.json({ err: "Ошибка профиля" });
-        const user = await User.findOne({ uid: uidStr });
-        if (!user) return res.json({ err: "Ошибка профиля" });
-
-        const now = Date.now();
-        const dayMs = 24 * 60 * 60 * 1000;
-        const lastSpin = user.last_roulette_at ? new Date(user.last_roulette_at).getTime() : 0;
-        if (lastSpin && now - lastSpin < dayMs) {
-            const remainingMinutes = Math.max(1, Math.ceil((dayMs - (now - lastSpin)) / 60000));
-            const hours = Math.floor(remainingMinutes / 60);
-            const minutes = remainingMinutes % 60;
-            return res.json({ err: `⏰ Вы уже использовали бесплатную рулетку.
-Попробуйте снова через: ${hours} ч ${minutes} мин.` });
-        }
-
-        const prizes = [
-            { label: "💎 +10", amount: 10, chance: 30 },
-            { label: "💎 +25", amount: 25, chance: 20 },
-            { label: "💎 +50", amount: 50, chance: 10 },
-            { label: "💎 +100", amount: 100, chance: 5 },
-            { label: "😭 Пусто", amount: 0, chance: 35 }
-        ];
-        const roll = Math.random() * 100;
-        let sum = 0;
-        let prize = prizes[prizes.length - 1];
-        for (const item of prizes) {
-            sum += item.chance;
-            if (roll < sum) { prize = item; break; }
-        }
-
-        user.last_roulette_at = new Date(now);
-        if (prize.amount > 0) {
-            user.balance += prize.amount;
-            addHistory(user, `🎡 Рулетка ${prize.label}`, prize.amount);
-        } else {
-            addHistory(user, "🎡 Рулетка: пусто", 0);
-        }
-        await user.save();
-        res.json({ prize: prize.label, amount: prize.amount, balance: Math.floor(user.balance), msg: prize.amount > 0 ? `🎡 Выпал приз ${prize.label}!` : "😭 В этот раз пусто" });
-    } catch (e) { res.json({ err: "Ошибка рулетки" }); }
-});
-
-app.post('/api/spin', async (req, res) => {
-    try {
-        const { uid, bet } = req.body;
-        const uidStr = safeUid(uid);
-        const safeBet = Math.floor(Number(bet));
-        if (!uidStr || isNaN(safeBet) || safeBet < SETTINGS.minBet) return res.json({ err: "Ошибка ставки" });
-        const user = await User.findOne({ uid: uidStr });
-        if (!user || user.balance < safeBet) return res.json({ err: "Мало 💎 ХОТ ТАП!" });
-        user.balance -= safeBet;
-        const items = ['🍒','🔔','💎','7️⃣','🍋'];
-        let result = [items[Math.floor(Math.random()*5)], items[Math.floor(Math.random()*5)], items[Math.floor(Math.random()*5)]];
-        if (Math.random() < SETTINGS.winChance) result = ['7️⃣','7️⃣','7️⃣'];
-        const isWin = result[0] === result[1] && result[1] === result[2];
-        const winSum = isWin ? Math.floor(safeBet * SETTINGS.multiplier) : 0;
-        user.balance += winSum;
-        user.spins++;
-        addHistory(user, `🎰 Слот -${safeBet} 💎`, -safeBet);
-        if(isWin) {
-            user.wins++;
-            addHistory(user, `🎰 Слот win +${winSum} 💎`, winSum);
-        }
-        await user.save();
-        res.json({ result, winSum, balance: Math.floor(user.balance) });
-    } catch (e) { res.json({ err: "Ошибка спина" }); }
-});
-
-// ==========================================
-// 🚀 ЛОГИКА ИГРЫ КРАШ (ГЛОБАЛЬНАЯ)
-// ==========================================
-const crashState = {
-    roundId: 0,
-    status: 'betting', // 'betting', 'flying', 'crashed'
-    crashPoint: 0,
-    startTime: 0,
-    bettingEndsAt: Date.now() + 10000,
-    crashedMultiplier: 0,
-    bets: {}, // uid -> { bet, cashedOut, winSum, cashoutMultiplier, cashoutAt }
-    suspicious: [],
-    cashoutSpam: {},
-    history: []
-};
-
-function markCrashSuspicious(uid, reason) {
-    const safeUid = (uid || 'unknown').toString();
-    const item = `${safeUid}: ${reason}`;
-    if (!crashState.suspicious.includes(item)) crashState.suspicious.push(item);
-}
-
-async function sendCrashRoundReport() {
-    try {
-        const entries = Object.entries(crashState.bets || {});
-        const total = entries.length;
-        if (total === 0) return;
-
-        const cashed = entries.filter(([, b]) => b.cashedOut).length;
-        const lost = total - cashed;
-
-        for (const [uid, b] of entries) {
-            const status = b.cashedOut ? 'CASHOUT' : 'LOST';
-            console.log(
-                `ROUND_ID=${crashState.roundId} UID=${uid} BET=${b.bet} CASHOUT_MULTIPLIER=${b.cashoutMultiplier || 0} CRASH_POINT=${crashState.crashPoint} WIN_SUM=${b.winSum || 0} STATUS=${status}`
-            );
-        }
-
-        const suspiciousText = crashState.suspicious.length
-            ? crashState.suspicious.slice(0, 15).join('\n')
-            : '✅ Нет';
-
-        const report =
-`🚀 CRASH REPORT
-Раунд: #${crashState.roundId}
-Взорвалась на: ${Number(crashState.crashPoint).toFixed(2)}x
-
-Игроков поставило: ${total}
-Забрали куш: ${cashed}
-Проиграли: ${lost}
-
-Подозрительные:
-${suspiciousText}`;
-
-        await bot.sendMessage(CONFIG.ADMIN_ID, report);
-    } catch (e) {
-        console.error('CRASH REPORT ERROR:', e.message);
-    }
-}
-
-// Серверный цикл игры Краш
-setInterval(() => {
-    const now = Date.now();
-    
-    if (crashState.status === 'betting') {
-        if (now >= crashState.bettingEndsAt) {
-            // Переход к полёту
-            crashState.roundId += 1;
-            crashState.status = 'flying';
-            crashState.startTime = now;
-            
-            // Генерация точки взрыва
-            crashState.crashPoint = 1.00;
-            if (Math.random() > 0.05) {
-                crashState.crashPoint = parseFloat((1 / Math.random() * 0.95).toFixed(2));
-            }
-            if (crashState.crashPoint < 1.01) crashState.crashPoint = 1.01;
-            if (crashState.crashPoint > 30) crashState.crashPoint = 30;
-        }
-    } else if (crashState.status === 'flying') {
-        const elapsed = now - crashState.startTime;
-        const currentMult = elapsed < 0 ? 1.00 : Math.pow(1.05, elapsed / 500);
-        
-        if (currentMult >= crashState.crashPoint) {
-            // Взрыв!
-            crashState.status = 'crashed';
-            crashState.crashedMultiplier = crashState.crashPoint;
-            const finishedCrashPoint = Number(crashState.crashPoint || crashState.crashedMultiplier || 1);
-            if (!Number.isNaN(finishedCrashPoint) && finishedCrashPoint >= 1) {
-                crashState.history.unshift(Number(finishedCrashPoint.toFixed(2)));
-                crashState.history = [...new Set(crashState.history.map(x => Number(x)))].slice(0, 12);
-            }
-            
-            sendCrashRoundReport();
-            // Ожидаем 3 секунды и начинаем новый раунд
-            setTimeout(() => {
-                crashState.status = 'betting';
-                crashState.bettingEndsAt = Date.now() + 10000;
-                crashState.bets = {};
-                crashState.suspicious = [];
-                crashState.cashoutSpam = {};
-                crashState.crashedMultiplier = 0;
-            }, 3000);
-        }
-    }
-}, 80);
-
-app.post('/api/crash/state', (req, res) => {
-    try {
-        const { uid } = req.body;
-        const now = Date.now();
-        let currentMult = 1.00;
-        let timeLeft = 0;
-        
-        if (crashState.status === 'betting') {
-            timeLeft = Math.max(0, Math.floor((crashState.bettingEndsAt - now) / 1000));
-        } else if (crashState.status === 'flying') {
-            currentMult = Math.pow(1.05, (now - crashState.startTime) / 500);
-            if (currentMult >= crashState.crashPoint) {
-                currentMult = crashState.crashPoint;
-            }
-        } else if (crashState.status === 'crashed') {
-            currentMult = crashState.crashedMultiplier;
-        }
-        
-        const myBet = crashState.bets[uid] || null;
-        
-        res.json({
-            status: crashState.status,
-            serverTime: now,
-            startTime: crashState.startTime,
-            bettingEndsAt: crashState.bettingEndsAt,
-            currentMultiplier: currentMult.toFixed(2),
-            timeLeft: timeLeft,
-            crashedMultiplier: crashState.crashedMultiplier.toFixed(2),
-            playersCount: Object.keys(crashState.bets || {}).length,
-            history: Array.isArray(crashState.history) ? crashState.history : [],
-            bet: myBet ? myBet.bet : 0,
-            cashedOut: myBet ? myBet.cashedOut : false,
-            winSum: myBet ? myBet.winSum : 0
-        });
-    } catch(e) { res.json({ err: "State err" }); }
-});
-
-app.post('/api/crash/bet', async (req, res) => {
-    try {
-        const { uid, bet } = req.body;
-        const uidStr = safeUid(uid);
-        const safeBet = Math.floor(Number(bet));
-
-        if (!uidStr || isNaN(safeBet) || safeBet < SETTINGS.minBet) return res.json({ err: "Ошибка ставки" });
-        if (crashState.status !== 'betting') return res.json({ err: "Ставки уже закрыты!" });
-        if (crashState.bets[uidStr]) {
-            markCrashSuspicious(uidStr, 'повторная ставка в одном раунде');
-            return res.json({ err: "Вы уже сделали ставку!" });
-        }
-
-        const user = await User.findOne({ uid: uidStr });
-        if (!user || user.balance < safeBet) return res.json({ err: "Мало 💎 ХОТ ТАП!" });
-
-        user.balance -= safeBet;
-        user.spins++;
-        addHistory(user, `🚀 Crash ставка -${safeBet} 💎`, -safeBet);
-        await user.save();
-
-        crashState.bets[uidStr] = { bet: safeBet, cashedOut: false, winSum: 0, cashoutMultiplier: 0, cashoutAt: 0 };
-        res.json({ success: true, balance: Math.floor(user.balance) });
-    } catch (e) {
-        console.log("Crash bet error:", e.message);
-        res.json({ err: "Ошибка ставки" });
-    }
-});
-
-app.post('/api/crash/cashout', async (req, res) => {
-    try {
-        const { uid } = req.body;
-        const uidStr = safeUid(uid);
-        if (!uidStr) return res.json({ err: "Ошибка профиля" });
-
-        const nowSpam = Date.now();
-        crashState.cashoutSpam[uidStr] = (crashState.cashoutSpam[uidStr] || []).filter(t => nowSpam - t < 2000);
-        crashState.cashoutSpam[uidStr].push(nowSpam);
-        if (crashState.cashoutSpam[uidStr].length >= 6) {
-            markCrashSuspicious(uidStr, 'слишком много cashout-запросов за короткое время');
-        }
-
-        if (crashState.status !== 'flying') return res.json({ err: "Раунд не в полёте!" });
-
-        const myBet = crashState.bets[uidStr];
-        if (!myBet) {
-            markCrashSuspicious(uidStr, 'cashout без активной ставки');
-            return res.json({ err: "Вы не ставили в этом раунде!" });
-        }
-        if (myBet.cashedOut) return res.json({ err: "Уже забрали куш!" });
-
-        const now = Date.now();
-        const currentMult = Math.pow(1.05, (now - crashState.startTime) / 500);
-
-        if (currentMult >= crashState.crashPoint) {
-            return res.json({ err: "Ракета уже взорвалась!" });
-        }
-
-        const winSum = Math.floor(myBet.bet * currentMult);
-        myBet.cashedOut = true;
-        myBet.winSum = winSum;
-        myBet.cashoutMultiplier = parseFloat(currentMult.toFixed(2));
-        myBet.cashoutAt = now;
-
-        if ((crashState.crashPoint - myBet.cashoutMultiplier) > 0 && (crashState.crashPoint - myBet.cashoutMultiplier) <= 0.05) {
-            markCrashSuspicious(uidStr, `идеальный cashout перед взрывом (${myBet.cashoutMultiplier}x / ${crashState.crashPoint}x)`);
-        }
-
-        const user = await User.findOne({ uid: uidStr });
-        if (user) {
-            user.balance += winSum;
-            user.wins++;
-            addHistory(user, `🚀 Crash win +${winSum} 💎`, winSum);
-            await user.save();
-            res.json({ success: true, winSum, multiplier: currentMult.toFixed(2), balance: Math.floor(user.balance) });
-        } else {
-            res.json({ err: "Ошибка профиля" });
-        }
-    } catch (e) { res.json({ err: "Ошибка вывода краша" }); }
-});
-
-// ==========================================
-// 💸 ВЫВОД 
-// ==========================================
-app.post('/api/withdraw', async (req, res) => {
-    try {
-        const { uid, amount, address } = req.body; 
-        const uidStr = safeUid(uid);
-        if (!uidStr) return res.json({ err: "Ошибка профиля" });
-        const user = await User.findOne({ uid: uidStr });
-        if (!user) return res.json({ err: "Ошибка профиля" });
-        const safeAmount = Math.floor(Number(amount));
-        if (isNaN(safeAmount) || safeAmount < 10) return res.json({ err: "Мин. вывод 10 💎" });
-        if (!address || address.length < 20) return res.json({ err: "Укажи нормальный кошелёк" });
-        if (user.balance < safeAmount) return res.json({ err: "Мало 💎 ХОТ ТАП!" });
-        const adminText = `🚨 **НОВАЯ ЗАЯВКА НА ВЫВОД**\nЮзер ID: \`${uidStr}\`\nСумма вывода: **${safeAmount} 💎**\nКошелёк: \`${address}\`\nТекущий баланс игрока: **${user.balance} 💎**`;
-        bot.sendMessage(CONFIG.ADMIN_ID, adminText, { 
-            parse_mode: 'Markdown',
-            reply_markup: {
-                inline_keyboard: [
-                    [{ text: "✅ Подтвердить вывод", callback_data: `withdraw_ok_${uidStr}_${safeAmount}` }],
-                    [{ text: "❌ Отклонить вывод", callback_data: `withdraw_no_${uidStr}_${safeAmount}` }]
-                ]
-            }
-        });
-        res.json({ msg: "Заявка отправлена на подтверждение админу!" });
-    } catch (e) { res.json({ err: "Ошибка при создании заявки" }); }
-});
+// Подключаем роуты
+app.use('/api', require('./routes/spin'));
+app.use('/api', require('./routes/roulette'));
+app.use('/api', require('./routes/promo'));
+app.use('/api', require('./routes/profile'));
+app.use('/api', require('./routes/withdraw')(bot, CONFIG));
+app.use('/api', require('./routes/crash')(bot, CONFIG));
 
 // ==========================================
 // 🎨 ФРОНТЕНД
@@ -2360,6 +1933,7 @@ app.get('/', (req, res) => {
     </body>
     </html>`);
 });
+
 
 const PORT = process.env.PORT || 10000;
 app.listen(PORT, () => console.log('Сервер запущен на порту ' + PORT));
