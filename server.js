@@ -200,9 +200,19 @@ app.use('/api', require('./routes/promo'));
 app.use('/api', require('./routes/profile'));
 app.use('/api', require('./routes/withdraw')(bot, CONFIG));
 app.use('/api', require('./routes/crash')(bot, CONFIG));
+app.use('/api', require('./routes/tasks')(bot));
+
+// ==========================================
+// 🛡 ОБРАБОТКА ОШИБОК
+// ==========================================
+app.use((err, req, res, next) => {
+    console.error("[ERROR]", err.stack || err);
+    res.status(500).json({ err: "Internal Server Error" });
+});
 
 // ==========================================
 // 🎨 ФРОНТЕНД
+
 // ==========================================
 app.get('/', (req, res) => {
     res.send(`<!DOCTYPE html>
@@ -1163,6 +1173,7 @@ app.get('/', (req, res) => {
                 <div class="bonus-grid">
                     <button class="bonus-choice" onclick="sh(9)"><span>🎁 Промокод</span></button>
                     <button class="bonus-choice roulette" onclick="sh(10)"><span>🎡 Рулетка</span></button>
+                    <button class="bonus-choice" onclick="sh(11)" style="border-color: rgba(0,255,140,0.55); box-shadow: 0 0 22px rgba(0,255,140,0.16), inset 0 0 20px rgba(0,255,140,0.08);"><span>📢 Задания</span></button>
                 </div>
             </div>
         </div>
@@ -1213,6 +1224,27 @@ app.get('/', (req, res) => {
                 <div class="roulette-result" id="rouletteResult">Нажми кнопку и забери бесплатный приз</div>
                 <button class="btn-main" onclick="spinBonusRoulette()" id="btnRoulette" style="font-size:16px;">🎡 КРУТИТЬ РУЛЕТКУ</button>
                 <button class="btn-main dark" onclick="sh(7)" style="margin-top:12px; font-size:14px;">🔙 НАЗАД К БОНУСАМ</button>
+            </div>
+        </div>
+
+        <!-- ВКЛАДКА 11: ЗАДАНИЯ -->
+        <div id="pg11" class="page">
+            <div class="card">
+                <div class="promo-card-title">📢 ЗАДАНИЯ</div>
+                <div class="small-info">Выполняй задания и получай бонусы!</div>
+                <div class="bonus-grid" style="margin-top: 14px;">
+                    <div class="bonus-choice" style="border-color: rgba(0,255,140,0.55); text-align: left; padding: 14px 16px; cursor: default;">
+                        <div style="display: flex; justify-content: space-between; align-items: center;">
+                            <span style="font-size: 16px;">Подписка на канал VIP ХОТ ТАП</span>
+                            <span style="color: var(--gold); font-size: 18px;">+50 💎</span>
+                        </div>
+                        <div style="font-size: 12px; color: #888; margin-top: 6px; text-transform: none; font-weight: 400;">
+                            Подпишись на наш Telegram канал и получи бонус
+                        </div>
+                        <button class="btn-main" style="margin-top: 12px; font-size: 14px;" onclick="checkSubscription()" id="btnCheckSub">✅ ПРОВЕРИТЬ ПОДПИСКУ</button>
+                    </div>
+                </div>
+                <button class="btn-main dark" onclick="sh(7)" style="margin-top: 12px; font-size: 14px;">🔙 НАЗАД К БОНУСАМ</button>
             </div>
         </div>
 
@@ -1317,7 +1349,7 @@ app.get('/', (req, res) => {
             }
             checkMaintenance();
             setInterval(checkMaintenance, 5000);
-            const SLOT_MIN_BET = ${Number(SETTINGS.minBet) || 10};
+            const SLOT_MIN_BET = 10;
             let bal = 0, isSlotGame = false;
             let crashPollInterval = null;
             let lastCrashStatus = '';
@@ -1481,7 +1513,7 @@ app.get('/', (req, res) => {
 
                 document.querySelectorAll('.bottom-nav-item').forEach(e => e.classList.remove('active'));
                 if (n===1 || n===2) document.getElementById('bnav-main').classList.add('active');
-                else if (n===7 || n===9 || n===10) document.getElementById('bnav-promo').classList.add('active');
+                else if (n===7 || n===9 || n===10 || n===11) document.getElementById('bnav-promo').classList.add('active');
                 else if (n===5 || n===3 || n===6) document.getElementById('bnav-profile').classList.add('active');
                 else if (n===4) document.getElementById('bnav-bank').classList.add('active');
                 else if (n===8) document.getElementById('bnav-history').classList.add('active');
@@ -1924,6 +1956,35 @@ app.get('/', (req, res) => {
                     gameAlert('Ошибка рулетки');
                 } finally {
                     setTimeout(() => { btn.disabled = false; }, 4000);
+                }
+            }
+
+            async function checkSubscription() {
+                const btn = document.getElementById('btnCheckSub');
+                if (!btn) return;
+                btn.disabled = true;
+                btn.innerText = "Проверка...";
+                try {
+                    const r = await fetch('/api/tasks/check-subscription', {
+                        method: 'POST',
+                        headers: {'Content-Type': 'application/json'},
+                        body: JSON.stringify({uid})
+                    });
+                    const d = await r.json();
+                    gameAlert(d.msg || d.err);
+                    if (d.success) {
+                        btn.innerText = "✅ ВЫПОЛНЕНО";
+                        btn.style.background = "#555";
+                        btn.style.boxShadow = "none";
+                        upd();
+                    } else {
+                        btn.disabled = false;
+                        btn.innerText = "✅ ПРОВЕРИТЬ ПОДПИСКУ";
+                    }
+                } catch(e) {
+                    gameAlert("Ошибка проверки");
+                    btn.disabled = false;
+                    btn.innerText = "✅ ПРОВЕРИТЬ ПОДПИСКУ";
                 }
             }
 

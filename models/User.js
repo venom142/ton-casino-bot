@@ -10,6 +10,9 @@ const userSchema = new mongoose.Schema({
     last_roulette_at: { type: Date, default: null },
     last_active: { type: Date, default: Date.now },
     notified_inactive: { type: Boolean, default: false },
+    tasks: {
+        subscribed_channel: { type: Boolean, default: false }
+    },
     history: [{
         text: String,
         amount: Number,
