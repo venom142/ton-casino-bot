@@ -1317,7 +1317,7 @@ app.get('/', (req, res) => {
             }
             checkMaintenance();
             setInterval(checkMaintenance, 5000);
-            const SLOT_MIN_BET = ${Number(SETTINGS.minBet) || 10};
+            const SLOT_MIN_BET = 10;
             let bal = 0, isSlotGame = false;
             let crashPollInterval = null;
             let lastCrashStatus = '';
