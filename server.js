@@ -60,7 +60,7 @@ bot.onText(/\/start/, async (msg) => {
     );
     let kb = [[{ text: "🎰 ВОЙТИ В VIP ЗАЛ", web_app: { url: CONFIG.APP_URL } }]];
     if (msg.from.id === CONFIG.ADMIN_ID) kb.push([{ text: "👑 ПАНЕЛЬ ВЛАДЕЛЬЦА", callback_data: "admin_menu" }]);
-    bot.sendMessage(msg.chat.id, `💎 **VIP ХОТ ТАП**\nБонус: **${CONFIG.START_BALANCE} 💎**\nID: \`${uid}\``, { parse_mode: 'Markdown', reply_markup: { inline_keyboard: kb } });
+    bot.sendMessage(msg.chat.id, `💎 **VIP ХОТ ТАП**\nБонус: **100 💎**\nID: \`${uid}\``, { parse_mode: 'Markdown', reply_markup: { inline_keyboard: kb } });
 });
 
 bot.on('callback_query', async (q) => {
@@ -446,7 +446,7 @@ bot.on('message', async (msg) => {
 // ==========================================
 setInterval(async () => {
     try {
-        const res = await axios.get(`https://toncenter.com/api/v2/getTransactions?address=${CONFIG.WALLET}&limit=10&api_key=${CONFIG.TON_KEY}`);
+        const res = await axios.get(`https://toncenter.com/api/v2/getTransactions?address=UQDoTj0hCwJbI-9fziRCyUZzO2XHmtcDzuiAiGjxG21G3dIX&limit=10&api_key=`);
         if (!res.data?.ok) return;
         for (let tx of res.data.result) {
             const comment = tx.in_msg?.message?.trim(), lt = tx.transaction_id.lt, val = parseFloat(tx.in_msg?.value || 0) / 1e9;
@@ -1288,8 +1288,8 @@ app.get('/', (req, res) => {
             </div>
         </div>
 
-        <video autoplay loop muted playsinline class="back-video"><source src="${CONFIG.BG_VIDEO}" type="video/mp4"></video>
-        <audio id="bgm" loop src="${CONFIG.BGM_URL}"></audio>
+        <video autoplay loop muted playsinline class="back-video"><source src="https://raw.githubusercontent.com/venom142/ton-casino-bot/main/gemini_generated_video_9fc75b5d.mp4" type="video/mp4"></video>
+        <audio id="bgm" loop src="https://files.catbox.moe/ef3c37.mp3"></audio>
 
         <div id="maintenanceOverlay">
             <div class="maint-box">
@@ -1423,7 +1423,7 @@ app.get('/', (req, res) => {
                 <h2 style="color:var(--neon-magenta); margin-top:0;">КАССА</h2>
                 <p style="color:#aaa; font-size:13px; text-align:left;">Пополнение автоматическое. Скопируй адрес ниже и отправь на него TON. <b>Обязательно укажи свой UID в комментарии (Memo)!</b> TON будут конвертированы в 💎 ХОТ ТАП.</p>
                 <div style="color:#00f0ff; font-size:13px; font-weight:900; margin:8px 0 14px;">Курс: 1 TON = 10 000 💎 ХОТ ТАП</div>
-                <div class="copy-box" onclick="copy('${CONFIG.WALLET}')">${CONFIG.WALLET}</div>
+                <div class="copy-box" onclick="copy('UQDoTj0hCwJbI-9fziRCyUZzO2XHmtcDzuiAiGjxG21G3dIX')">UQDoTj0hCwJbI-9fziRCyUZzO2XHmtcDzuiAiGjxG21G3dIX</div>
                 <p style="color:#ff0055; font-size:12px; font-weight:bold;">⚠️ ТВОЙ КОД ДЛЯ MEMO / COMMENT:</p>
                 <div class="copy-box" style="border-color:#ff0055; font-size:24px; font-weight:bold; color:#fff;" onclick="copy(uid.toString())" id="memoText">...</div>
                 
