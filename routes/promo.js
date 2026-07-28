@@ -16,6 +16,9 @@ router.post('/promo', async (req, res) => {
         if (!pr) return res.json({ err: "❌ Неверный промокод!" });
         if (user.used_promos.includes(p)) return res.json({ err: "⚠️ Вы уже использовали этот код!" });
         if (pr.usedCount >= pr.limit) return res.json({ err: "🚫 Лимит исчерпан!" });
+        if (pr.expires_at && new Date() > pr.expires_at) return res.json({ err: "🚫 Промокод просрочен!" });
+        if (pr.vip_only && !user.is_vip) return res.json({ err: "⭐ Только для VIP!" });
+        if (pr.new_only && (Date.now() - new Date(user.created_at).getTime()) > 86400000 * 7) return res.json({ err: "🆕 Только для новых игроков!" });
         user.balance += pr.value;
         user.used_promos.push(p);
         addHistory(user, `🎁 Промо +${pr.value} 💎`, pr.value);

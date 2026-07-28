@@ -21,10 +21,7 @@ router.post('/spin', async (req, res) => {
         user.balance += winSum;
         user.spins++;
         addHistory(user, `🎰 Слот -${safeBet} 💎`, -safeBet);
-        if(isWin) {
-            user.wins++;
-            addHistory(user, `🎰 Слот win +${winSum} 💎`, winSum);
-        }
+        if(isWin) { user.wins++; addHistory(user, `🎰 Слот win +${winSum} 💎`, winSum); }
         await user.save();
         res.json({ result, winSum, balance: Math.floor(user.balance) });
     } catch (e) { res.json({ err: "Ошибка спина" }); }

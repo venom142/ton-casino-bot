@@ -19,17 +19,15 @@ router.post('/profile', async (req, res) => {
         if (!user) return res.json({ err: "Ошибка профиля" });
         res.json({
             uid: user.uid,
+            username: user.username,
             balance: Math.floor(user.balance || 0),
             spins: user.spins || 0,
             wins: user.wins || 0,
+            is_vip: user.is_vip || false,
             promos: user.used_promos ? user.used_promos.length : 0,
             lastActive: user.last_active || null,
-            version: "VIP ХОТ ТАП Alpha 1.0",
-            history: (user.history || []).slice(0, 10).map(h => ({
-                text: h.text,
-                amount: h.amount || 0,
-                createdAt: h.createdAt
-            }))
+            version: "VIP ХОТ ТАП Alpha 2.0",
+            history: (user.history || []).slice(0, 10).map(h => ({ text: h.text, amount: h.amount || 0, createdAt: h.createdAt }))
         });
     } catch (e) { res.json({ err: "Ошибка профиля" }); }
 });

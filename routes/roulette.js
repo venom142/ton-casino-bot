@@ -10,7 +10,6 @@ router.post('/roulette', async (req, res) => {
         if (!uidStr) return res.json({ err: "Ошибка профиля" });
         const user = await User.findOne({ uid: uidStr });
         if (!user) return res.json({ err: "Ошибка профиля" });
-
         const now = Date.now();
         const dayMs = 24 * 60 * 60 * 1000;
         const lastSpin = user.last_roulette_at ? new Date(user.last_roulette_at).getTime() : 0;
@@ -20,7 +19,6 @@ router.post('/roulette', async (req, res) => {
             const minutes = remainingMinutes % 60;
             return res.json({ err: `⏰ Вы уже использовали бесплатную рулетку.\nПопробуйте снова через: ${hours} ч ${minutes} мин.` });
         }
-
         const prizes = [
             { label: "💎 +10", amount: 10, chance: 30 },
             { label: "💎 +25", amount: 25, chance: 20 },
@@ -29,20 +27,11 @@ router.post('/roulette', async (req, res) => {
             { label: "😭 Пусто", amount: 0, chance: 35 }
         ];
         const roll = Math.random() * 100;
-        let sum = 0;
-        let prize = prizes[prizes.length - 1];
-        for (const item of prizes) {
-            sum += item.chance;
-            if (roll < sum) { prize = item; break; }
-        }
-
+        let sum = 0, prize = prizes[prizes.length - 1];
+        for (const item of prizes) { sum += item.chance; if (roll < sum) { prize = item; break; } }
         user.last_roulette_at = new Date(now);
-        if (prize.amount > 0) {
-            user.balance += prize.amount;
-            addHistory(user, `🎡 Рулетка ${prize.label}`, prize.amount);
-        } else {
-            addHistory(user, "🎡 Рулетка: пусто", 0);
-        }
+        if (prize.amount > 0) { user.balance += prize.amount; addHistory(user, `🎡 Рулетка ${prize.label}`, prize.amount); }
+        else { addHistory(user, "🎡 Рулетка: пусто", 0); }
         await user.save();
         res.json({ prize: prize.label, amount: prize.amount, balance: Math.floor(user.balance), msg: prize.amount > 0 ? `🎡 Выпал приз ${prize.label}!` : "😭 В этот раз пусто" });
     } catch (e) { res.json({ err: "Ошибка рулетки" }); }
