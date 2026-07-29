@@ -203,7 +203,7 @@ bot.on('callback_query', async (q) => {
     }
 
     if (q.data === "adm_settings") {
-        bot.sendMessage(chatId, `⚙️ **НАСТРОЙКИ**\n\nШанс: **${Math.round(state.SETTINGS.winChance * 100)}%**\nИкс: **x10**\nМин. ставка: **10 💎**`, { parse_mode: 'Markdown', reply_markup: { inline_keyboard: [
+        bot.sendMessage(chatId, `⚙️ **НАСТРОЙКИ**\n\nШанс: **${Math.round(state.SETTINGS.winChance * 100)}%**\nИкс: **x${state.SETTINGS.multiplier}**\nМин. ставка: **${state.SETTINGS.minBet} 💎**`, { parse_mode: 'Markdown', reply_markup: { inline_keyboard: [
             [{ text: "⚙️ Шанс", callback_data: "adm_set_chance" }, { text: "✖️ Икс", callback_data: "adm_set_mult" }],
             [{ text: "📉 Мин.ставка", callback_data: "adm_set_minbet" }],
             [{ text: "🔙 Назад", callback_data: "admin_menu" }]
