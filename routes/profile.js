@@ -7,7 +7,13 @@ router.post('/sync', async (req, res) => {
     try {
         const uid = safeUid(req.body?.uid);
         const user = uid ? await User.findOne({ uid }) : null;
-        res.json(user || { balance: 0 });
+        if (!user) return res.json({ balance: 0 });
+        res.json({
+            balance: user.balance || 0,
+            is_banned: user.is_banned || false,
+            ban_reason: user.ban_reason || '',
+            is_vip: user.is_vip || false
+        });
     } catch (e) { res.json({ balance: 0 }); }
 });
 

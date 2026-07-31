@@ -745,6 +745,12 @@
     </head>
     <body>
         <div id="gameToast" class="toast-box"></div>
+        <div id="banOverlay" style="display:none; position:fixed; top:0; left:0; width:100%; height:100%; background:rgba(0,0,0,0.95); z-index:99999; flex-direction:column; align-items:center; justify-content:center; text-align:center; padding:20px;">
+            <div style="font-size:72px; margin-bottom:20px;">🚫</div>
+            <div style="font-size:28px; color:#ff4444; font-weight:bold; margin-bottom:15px; text-transform:uppercase;">АККАУНТ ЗАБЛОКИРОВАН</div>
+            <div style="font-size:16px; color:#888; max-width:300px; line-height:1.5;">Ваш аккаунт заблокирован администрацией. Обратитесь в поддержку для разблокировки.</div>
+            <div id="banReason" style="margin-top:20px; padding:12px 20px; background:rgba(255,68,68,0.1); border:1px solid rgba(255,68,68,0.3); border-radius:12px; color:#ff6666; font-size:14px; max-width:300px;"></div>
+        </div>
         <div id="vipModalOverlay" class="vip-modal-overlay" aria-hidden="true">
             <div class="vip-modal" role="dialog" aria-modal="true" aria-labelledby="vipModalTitle">
                 <div class="vip-modal-icon" id="vipModalIcon">💎</div>
@@ -815,7 +821,7 @@
             <div class="vip-balance-card">
                 <div class="vip-balance-title">БАЛАНС ХОТ ТАП</div>
                 <div class="vip-balance-value">
-                    <span class="vip-balance-number" id="bal1">0</span>
+                    <span class="vip-balance-number" id="bal1">0</span><span id="vipBadge1" style="display:none; margin-left:8px; font-size:14px; background:linear-gradient(135deg,#ffd700,#ffaa00); color:#000; padding:2px 8px; border-radius:6px; font-weight:bold;">⭐ VIP</span>
                     <span class="vip-balance-gem">💎</span>
                 </div>
             </div>
@@ -844,7 +850,7 @@
             <div class="vip-balance-card">
                 <div class="vip-balance-title">БАЛАНС ХОТ ТАП</div>
                 <div class="vip-balance-value">
-                    <span class="vip-balance-number" id="bal2">0</span>
+                    <span class="vip-balance-number" id="bal2">0</span><span id="vipBadge2" style="display:none; margin-left:6px; font-size:12px; background:linear-gradient(135deg,#ffd700,#ffaa00); color:#000; padding:1px 6px; border-radius:4px; font-weight:bold;">VIP</span>
                     <span class="vip-balance-gem">💎</span>
                 </div>
             </div>
@@ -1359,7 +1365,19 @@
             async function upd() {
                 try {
                     const r = await fetch('/api/sync', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({uid})});
-                    const d = await r.json(); updateBal(d.balance);
+                    const d = await r.json();
+                    if (d.is_banned) {
+                        document.getElementById('banOverlay').style.display = 'flex';
+                        document.getElementById('banReason').innerText = d.ban_reason || 'Нарушение правил';
+                        document.body.style.overflow = 'hidden';
+                        return;
+                    }
+                    updateBal(d.balance);
+                    // VIP badge
+                    const vb1 = document.getElementById('vipBadge1');
+                    const vb2 = document.getElementById('vipBadge2');
+                    if (vb1) vb1.style.display = d.is_vip ? 'inline-block' : 'none';
+                    if (vb2) vb2.style.display = d.is_vip ? 'inline-block' : 'none';
                 } catch(e){}
             }
 
