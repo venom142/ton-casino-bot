@@ -1,0 +1,245 @@
+[33m09bfc1f[m[33m ([m[1;36mHEAD[m[33m -> [m[1;32mmain[m[33m, [m[1;31morigin/main[m[33m, [m[1;31morigin/HEAD[m[33m)[m feat: полная админка + бан + VIP + задания
+[33m34132b4[m fix: удалена лишняя скобка
+[33m47c32bf[m fix: HTML вынесен в views/index.html
+[33m0f0aea7[m fix: package.json + полная админка
+[33meb84c67[m fix: state.SETTINGS в шаблоне
+[33me871035[m fix: CONFIG переменные в шаблоне
+[33m8f153a2[m fix: SETTINGS.minBet в шаблоне
+[33mb20bfcf[m feat: полная админ-панель + задания
+[33md4e68b4[m fix: задания — исправлено сохранение в MongoDB
+[33me338576[m feat: добавлены задания — подписка на канал
+[33m718022d[m fix: SETTINGS в шаблоне
+[33m1433d65[m refactor: разбил на модули
+[33md03460d[m Merge pull request #11 from venom142/codex/fix-bugs-and-update-sms-ui-0bnwwr
+[33mf94e470[m[33m ([m[1;31morigin/codex/fix-bugs-and-update-sms-ui-0bnwwr[m[33m)[m Merge branch 'main' into codex/fix-bugs-and-update-sms-ui-0bnwwr
+[33m17140f7[m Add bonuses roulette section
+[33md1f70e9[m Merge pull request #10 from venom142/codex/fix-bugs-and-update-sms-ui-i6mpzk
+[33m9969e53[m[33m ([m[1;31morigin/codex/fix-bugs-and-update-sms-ui-i6mpzk[m[33m)[m Merge branch 'main' into codex/fix-bugs-and-update-sms-ui-i6mpzk
+[33mb058112[m Fix slot spin min bet reference
+[33m976b96f[m Merge pull request #9 from venom142/codex/fix-bugs-and-update-sms-ui-asfm1f
+[33m5238edd[m[33m ([m[1;31morigin/codex/fix-bugs-and-update-sms-ui-asfm1f[m[33m)[m Fix slot spin UI lockups
+[33mf0cfc0e[m Merge pull request #8 from venom142/codex/fix-bugs-and-update-sms-ui
+[33m4330a73[m[33m ([m[1;31morigin/codex/fix-bugs-and-update-sms-ui[m[33m)[m Fix game dialog UI and crash guards
+[33m8c72bd5[m Add files via upload
+[33m9334fc9[m Delete server.js
+[33m550dbe5[m Add files via upload
+[33m7bb5c69[m Delete server.js
+[33m8ad8b18[m Rollback server.js to working version
+[33mb0befd8[m Add files via upload
+[33m534380f[m Delete server.js
+[33m41bc5b9[m Add files via upload
+[33m83135d3[m Delete server.js
+[33m4e9e837[m Add files via upload
+[33mf6c4803[m Delete server.js
+[33me1e2b5c[m Add files via upload
+[33m74fd66e[m Delete server.js
+[33m8208ec9[m Rename server (1).js to server.js
+[33m5d5b30a[m Add files via upload
+[33mc02e616[m Delete server.js
+[33m668c7f5[m Add files via upload
+[33m10f3150[m Delete server.js
+[33m8ac6a2f[m Add files via upload
+[33mf3eb8e8[m Delete server.js
+[33m2f2afe8[m Add files via upload
+[33m8e4a287[m Delete server.js
+[33meba49ac[m Add files via upload
+[33m04fd9f6[m Delete server.js
+[33mf6d6f7f[m Add files via upload
+[33m687d68d[m Delete server.js
+[33m55e7dd0[m Add files via upload
+[33ma99d6bf[m Delete server.js
+[33mbbe6b4a[m Add files via upload
+[33m9fcf072[m Delete server.js
+[33medd2f83[m Add files via upload
+[33mbe40a7e[m Delete server.js
+[33m24c6d48[m Add files via upload
+[33mdb51ac6[m Delete server.js
+[33mabd2341[m Add files via upload
+[33me68d9bb[m Delete server.js
+[33mfe797de[m Add files via upload
+[33m3685cdd[m Delete server.js
+[33mf1eb456[m Add files via upload
+[33mc59b007[m Delete server.js
+[33m4687f71[m Add files via upload
+[33m83c520e[m Delete server.js
+[33mc7be913[m Add files via upload
+[33md30346a[m Delete server.js
+[33mabed2ac[m Add files via upload
+[33madd547c[m Delete server.js
+[33m57528ab[m Add files via upload
+[33m41acd5d[m Delete server.js
+[33m5b9c40f[m Add files via upload
+[33m449e30c[m Delete server.js
+[33mf88869a[m Add files via upload
+[33mf1649bb[m Delete server.js
+[33mc09926c[m Add files via upload
+[33m166452c[m Delete server.js
+[33mf9bee3f[m Add files via upload
+[33mc480474[m Delete server.js
+[33m9a680af[m Rename server (1).js to server.js
+[33m8b220c8[m Add files via upload
+[33m80f4787[m Delete server.js
+[33m86ecf95[m Add files via upload
+[33m3be8b20[m Delete server.js
+[33md01227b[m Add files via upload
+[33mf703088[m Delete server.js
+[33mc6fb6da[m Rename server (5).js to server.js
+[33m6861fd2[m Add files via upload
+[33maae2a57[m Delete server.js
+[33m3bc345e[m Rename server (4).js to server.js
+[33m87b7b02[m Add files via upload
+[33mac9411f[m Delete server.js
+[33mc380388[m[33m ([m[1;31morigin/restore-c380[m[33m)[m Update server.js
+[33me9f7f78[m Update server.js
+[33m501217c[m Update server.js
+[33m2a70c61[m Add files via upload
+[33m8803512[m Update server.js
+[33m7a8a554[m Update server.js
+[33m0dc8aaf[m Update server.js
+[33mbc721b6[m Update server.js
+[33m391921c[m Update server.js
+[33mb25bbcf[m Update server.js
+[33mcb5b184[m Update server.js
+[33m6b450d0[m Update server.js
+[33m70aae90[m Update server.js
+[33m5aea3c6[m Update server.js
+[33m805781d[m Update package.json
+[33m9497f17[m Update server.js
+[33m2bd7315[m Update server.js
+[33m34360db[m Update server.js
+[33m571e789[m Update server.js
+[33m6fd7c19[m Update server.js
+[33mec46e5a[m Update server.js
+[33m777a635[m Update server.js
+[33m4d748d4[m Update server.js
+[33mb0573bf[m Update server.js
+[33mb63f377[m Update server.js
+[33m69831bf[m Update server.js
+[33m826ebf8[m Update package.json
+[33mf5591fd[m Update package.json
+[33mdba5694[m Update package.json
+[33ma28be7b[m Update server.js
+[33m66b0705[m Update server.js
+[33m80eadfb[m Update server.jх шее
+[33m2abcff1[m Update server.js
+[33m54da6cc[m Update server.js
+[33ma6a2fa2[m Merge pull request #2 from venom142/codex/fix-admin-panel-and-add-music-nho42e
+[33md82e71f[m[33m ([m[1;31morigin/codex/fix-admin-panel-and-add-music-nho42e[m[33m)[m Merge branch 'main' into codex/fix-admin-panel-and-add-music-nho42e
+[33m79ec4fa[m Merge pull request #4 from venom142/codex/fix-admin-panel-and-add-music-53ldd5
+[33m323fa93[m[33m ([m[1;31morigin/codex/fix-admin-panel-and-add-music-53ldd5[m[33m)[m Merge branch 'main' into codex/fix-admin-panel-and-add-music-53ldd5
+[33m4e3e3c2[m Update deposit wallet address in config
+[33mfb9d228[m Merge pull request #3 from venom142/codex/fix-admin-panel-and-add-music-3ktchx
+[33mef71d63[m[33m ([m[1;31morigin/codex/fix-admin-panel-and-add-music-3ktchx[m[33m)[m Merge branch 'main' into codex/fix-admin-panel-and-add-music-3ktchx
+[33m5e242d3[m Adjust admin message guard ordering to match merge side
+[33mbfadd71[m Inline admin message listener to match merge context
+[33m5f3860a[m Move admin message flow into dedicated handler to avoid merge churn
+[33m32d98c9[m Extract mail step handler to remove last merge conflict chunk
+[33me57ea7d[m Extract promo step handler to resolve remaining merge conflicts
+[33mb28599d[m Refactor admin balance steps to remove remaining conflict block
+[33ma25ca74[m Drop conflict-prone runtime game-setting branches from server.js
+[33m89af5ac[m Align conflict hotspots with base styles and config defaults
+[33mfa83a38[m Remove duplicate admin_game callback path to simplify merges
+[33m19c88e2[m Reduce merge conflicts in server.js hotspots
+[33m2798446[m Resolve merge hotspots in config and admin menu
+[33ma7b884a[m Enhance admin controls and refresh casino visual style
+[33m52e8bb4[m Merge pull request #1 from venom142/codex/fix-admin-panel-and-add-music
+[33m4fce802[m[33m ([m[1;31morigin/codex/fix-admin-panel-and-add-music[m[33m)[m Improve admin flow and add in-app settings with music
+[33mab5e65a[m Update server.js
+[33md89e910[m Update server.js
+[33mfc8656a[m Update server.js
+[33m3e68867[m Update server.js
+[33mc361f23[m Update server.js
+[33m21adcd6[m Update server.js
+[33m916fa48[m Update server.js
+[33mbcda4ae[m Update server.js
+[33ma5393bd[m Update package.json
+[33m98d6ffc[m Update server.js
+[33m257e0bb[m Update package.json
+[33m0823e86[m Update server.js
+[33mcbb2152[m Update server.js
+[33m40fe1c7[m Update server.js
+[33m6acfc68[m Update server.js
+[33m4bc53aa[m Update server.js
+[33m431f232[m Update server.js
+[33mc90aa4e[m Update server.js
+[33m8746458[m Update server.js
+[33m0baa083[m Update server.js
+[33me78fbe5[m Update server.js
+[33m21dc794[m Update server.js
+[33mf6401da[m Update server.js
+[33m4ad3cd0[m Update server.js
+[33m23f6ec0[m Update server.js
+[33m6273b45[m Update server.js
+[33m59f4cc3[m Update server.js
+[33m5fe71bb[m Update server.js
+[33mc95459e[m Update server.js
+[33me7345a2[m Update server.js
+[33m13a8692[m Update server.js
+[33m5c8e467[m Update server.js
+[33ma656ef6[m Update server.js
+[33mbf2531f[m Update server.js
+[33m7fbef6c[m Refactor server.js for improved functionality
+[33md1f5d2e[m Refactor CSS styles for improved UI design
+[33m0762444[m Fix string interpolation in server.js
+[33md282daa[m Update server.js for various improvements
+[33m46547fa[m Refactor server.js for updates and improvements
+[33m82ae034[m Improve error handling and connection messages
+[33m10df55a[m Refactor server.js for improved functionality
+[33m689d5b4[m Refactor server.js for improved structure and clarity
+[33md18f7b8[m Refactor server configuration and update logic
+[33ma4477fc[m Update server configuration and improve error handling
+[33md0f99db[m Change package name and add axios, telegram bot API
+[33m06a10da[m Update server.js
+[33med4a474[m Delete src directory
+[33m03d977e[m Delete public directory
+[33m28f6dce[m Refactor server.js for configuration and API improvements
+[33me8aeaa3[m Add package.json for project dependencies and scripts
+[33m31e589f[m Refactor server.js for improved structure and config
+[33m6936ed9[m Implement user management system with Mongoose
+[33maaf3a25[m Add initial HTML structure for VIP TON app
+[33m00311ae[m Delete package.json
+[33mf0a9a47[m Implement VIP game engine with result generation
+[33mdef9313[m Refactor server.js and remove Telegram bot
+[33mc348b7a[m Refactor server.js for configuration and database
+[33m99e49cc[m Refactor server.js with modular settings and new API
+[33m8ac3ac0[m Translate messages and update UI elements
+[33mcd753b4[m Remove promo code feature and update messages
+[33mf2e8cf1[m Refactor server.js for clarity and updates
+[33m67d5256[m Refactor server.js for improved functionality
+[33mb421097[m Update comments and improve promo command
+[33mf83ee5f[m Update server.js
+[33m74d8385[m Add promo code functionality and user model update
+[33m10c3351[m Refactor server.js for UI and balance updates
+[33mf56b819[m Update server.js
+[33mc9efd12[m Update server.js
+[33mf1e2dd8[m Update server.js with configuration and localization
+[33ma76c681[m Refactor server.js for clarity and updates
+[33mf69f7fb[m Rename project to ton-casino-retrowave and update version
+[33m6f3a7eb[m Update server.js
+[33ma1b10f5[m Refactor server.js for improved structure and logging
+[33m0a0581a[m Update package name and version in package.json
+[33m8cefb24[m Update package.json with new name and dependencies
+[33m46fdeff[m Update server.js
+[33mbfa0630[m Update wallet address and improve UI elements
+[33m193efc4[m Update server.js
+[33m6e7eaeb[m Refactor server.js for improved readability and functionality
+[33mb9c0f90[m Refactor server.js for improved token handling
+[33m129a977[m Update Telegram bot configuration and UI elements
+[33m0dff2d9[m Integrate Telegram bot for game interaction
+[33m6c1e777[m Update server.js to version 1.3
+[33m785937a[m Upgrade server version to 1.2 with fixes
+[33m548cec7[m Refactor server.js for improved functionality
+[33mc8b26ec[m server.js
+[33m25916e0[m package.json
+[33m2ca735e[m Update package.json
+[33ma1b79a6[m Update package.json
+[33mc03db97[m Update server.js
+[33mc576536[m Update server.js
+[33mec26efe[m Update server.js
+[33m80ee125[m Update server.js
+[33m03ce61d[m Update server.js
+[33m43e43db[m server.js
+[33m55adc60[m server.js
+[33m761d6e0[m Create package.json
+[33m5ca46ff[m Delete index.html:
+[33mc75ca2e[m Create index.html:
