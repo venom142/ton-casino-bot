@@ -1,6 +1,7 @@
 const express = require('express');
 const User = require('../models/User');
-const { addHistory, safeUid } = require('../utils/helpers');
+const { safeUid } = require('../utils/helpers');
+const { debit, credit } = require('../utils/wallet');
 const state = require('../state');
 
 const crashState = {
@@ -80,7 +81,7 @@ module.exports = (bot, CONFIG) => {
 
     router.post('/crash/state', (req, res) => {
         try {
-            const { uid } = req.body;
+            const uid = safeUid(req.body && req.body.uid);
             const now = Date.now();
             let currentMult = 1.00, timeLeft = 0;
             if (crashState.status === 'betting') timeLeft = Math.max(0, Math.floor((crashState.bettingEndsAt - now) / 1000));
@@ -101,12 +102,20 @@ module.exports = (bot, CONFIG) => {
             if (!uidStr || isNaN(safeBet) || safeBet < state.SETTINGS.minBet) return res.json({ err: "Ошибка ставки" });
             if (crashState.status !== 'betting') return res.json({ err: "Ставки уже закрыты!" });
             if (crashState.bets[uidStr]) { markCrashSuspicious(uidStr, 'повторная ставка'); return res.json({ err: "Вы уже сделали ставку!" }); }
-            const user = await User.findOne({ uid: uidStr });
-            if (!user || user.balance < safeBet) return res.json({ err: "Мало 💎 ХОТ ТАП!" });
-            user.balance -= safeBet; user.spins++;
-            addHistory(user, `🚀 Crash ставка -${safeBet} 💎`, -safeBet);
-            await user.save();
-            crashState.bets[uidStr] = { bet: safeBet, cashedOut: false, winSum: 0, cashoutMultiplier: 0, cashoutAt: 0 };
+            if (!Number.isFinite(safeBet) || safeBet > 1e9) return res.json({ err: "Ошибка ставки" });
+            // Бронируем место СРАЗУ (до await), чтобы параллельные запросы не поставили вторую ставку
+            const rid = crashState.roundId;
+            crashState.bets[uidStr] = { bet: safeBet, cashedOut: false, winSum: 0, cashoutMultiplier: 0, cashoutAt: 0, pending: true };
+            let user;
+            try { user = await debit(uidStr, safeBet, `🚀 Crash ставка -${safeBet} 💎`, { spins: 1 }); }
+            catch (err) { delete crashState.bets[uidStr]; throw err; }
+            if (!user) { delete crashState.bets[uidStr]; return res.json({ err: "Мало 💎 ХОТ ТАП!" }); }
+            if (crashState.roundId !== rid || crashState.status !== 'betting') {
+                // раунд успел закрыться, пока шло списание — возвращаем ставку
+                const back = await credit(uidStr, safeBet, `↩️ Crash возврат +${safeBet} 💎`);
+                return res.json({ err: "Ставки уже закрыты!", balance: back ? Math.floor(back.balance) : undefined });
+            }
+            delete crashState.bets[uidStr].pending;
             res.json({ success: true, balance: Math.floor(user.balance) });
         } catch (e) { res.json({ err: "Ошибка ставки" }); }
     });
@@ -123,6 +132,7 @@ module.exports = (bot, CONFIG) => {
             if (crashState.status !== 'flying') return res.json({ err: "Раунд не в полёте!" });
             const myBet = crashState.bets[uidStr];
             if (!myBet) { markCrashSuspicious(uidStr, 'cashout без ставки'); return res.json({ err: "Вы не ставили в этом раунде!" }); }
+            if (myBet.pending) return res.json({ err: "Ставка ещё обрабатывается" });
             if (myBet.cashedOut) return res.json({ err: "Уже забрали куш!" });
             const now = Date.now();
             const currentMult = Math.pow(1.05, (now - crashState.startTime) / 500);
@@ -130,8 +140,10 @@ module.exports = (bot, CONFIG) => {
             const winSum = Math.floor(myBet.bet * currentMult);
             myBet.cashedOut = true; myBet.winSum = winSum; myBet.cashoutMultiplier = parseFloat(currentMult.toFixed(2)); myBet.cashoutAt = now;
             if ((crashState.crashPoint - myBet.cashoutMultiplier) > 0 && (crashState.crashPoint - myBet.cashoutMultiplier) <= 0.05) markCrashSuspicious(uidStr, `идеальный cashout`);
-            const user = await User.findOne({ uid: uidStr });
-            if (user) { user.balance += winSum; user.wins++; addHistory(user, `🚀 Crash win +${winSum} 💎`, winSum); await user.save(); res.json({ success: true, winSum, multiplier: currentMult.toFixed(2), balance: Math.floor(user.balance) }); }
+            let user;
+            try { user = await credit(uidStr, winSum, `🚀 Crash win +${winSum} 💎`, { wins: 1 }); }
+            catch (err) { myBet.cashedOut = false; myBet.winSum = 0; throw err; } // не теряем выигрыш при сбое БД
+            if (user) res.json({ success: true, winSum, multiplier: currentMult.toFixed(2), balance: Math.floor(user.balance) });
             else res.json({ err: "Ошибка профиля" });
         } catch (e) { res.json({ err: "Ошибка вывода краша" }); }
     });

@@ -9,6 +9,7 @@ const transactionSchema = new mongoose.Schema({
     wallet_address: String,
     tx_hash: String,
     description: String,
+    reserved: { type: Boolean, default: false }, // сумма вывода заморожена при создании заявки
     created_at: { type: Date, default: Date.now }
 });
 

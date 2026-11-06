@@ -1,7 +1,8 @@
 const express = require('express');
 const router = express.Router();
 const User = require('../models/User');
-const { addHistory, safeUid } = require('../utils/helpers');
+const { safeUid } = require('../utils/helpers');
+const { debit, credit } = require('../utils/wallet');
 const state = require('../state');
 
 router.post('/spin', async (req, res) => {
@@ -10,20 +11,21 @@ router.post('/spin', async (req, res) => {
         const uidStr = safeUid(uid);
         const safeBet = Math.floor(Number(bet));
         if (!uidStr || isNaN(safeBet) || safeBet < state.SETTINGS.minBet) return res.json({ err: "Ошибка ставки" });
-        const user = await User.findOne({ uid: uidStr });
-        if (!user || user.balance < safeBet) return res.json({ err: "Мало 💎 ХОТ ТАП!" });
-        user.balance -= safeBet;
+        if (!uidStr || !Number.isFinite(safeBet) || safeBet > 1e9) return res.json({ err: "Ошибка ставки" });
+        // АТОМАРНО: ставка списывается только если хватает баланса (защита от гонок)
+        const debited = await debit(uidStr, safeBet, `🎰 Слот -${safeBet} 💎`, { spins: 1 });
+        if (!debited) return res.json({ err: "Мало 💎 ХОТ ТАП!" });
         const items = ['🍒','🔔','💎','7️⃣','🍋'];
         let result = [items[Math.floor(Math.random()*5)], items[Math.floor(Math.random()*5)], items[Math.floor(Math.random()*5)]];
         if (Math.random() < state.SETTINGS.winChance) result = ['7️⃣','7️⃣','7️⃣'];
         const isWin = result[0] === result[1] && result[1] === result[2];
         const winSum = isWin ? Math.floor(safeBet * state.SETTINGS.multiplier) : 0;
-        user.balance += winSum;
-        user.spins++;
-        addHistory(user, `🎰 Слот -${safeBet} 💎`, -safeBet);
-        if(isWin) { user.wins++; addHistory(user, `🎰 Слот win +${winSum} 💎`, winSum); }
-        await user.save();
-        res.json({ result, winSum, balance: Math.floor(user.balance) });
+        let balance = debited.balance;
+        if (isWin) {
+            const w = await credit(uidStr, winSum, `🎰 Слот win +${winSum} 💎`, { wins: 1 });
+            if (w) balance = w.balance;
+        }
+        res.json({ result, winSum, balance: Math.floor(balance) });
     } catch (e) { res.json({ err: "Ошибка спина" }); }
 });
 

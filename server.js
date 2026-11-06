@@ -10,6 +10,7 @@ const state = require('./state');
 const User = require('./models/User');
 const Promo = require('./models/Promo');
 const Transaction = require('./models/Transaction');
+const { approveWithdraw, rejectWithdraw } = require('./utils/wallet');
 const AdminLog = require('./models/AdminLog');
 const Ban = require('./models/Ban');
 const Task = require('./models/Task');
@@ -248,35 +249,19 @@ bot.on('callback_query', async (q) => {
         return;
     }
 
-    if (q.data.startsWith('withdraw_ok_')) {
-        const parts = q.data.split('_');
-        const targetUid = parts[2];
-        const amount = parseInt(parts[3]);
-        const txId = parts[4];
-        bot.editMessageReplyMarkup({ inline_keyboard: [] }, { chat_id: chatId, message_id: msgId });
-        const user = await User.findOne({ uid: targetUid });
-        if (!user) return bot.sendMessage(chatId, "❌ Игрок не найден.");
-        if (user.balance >= amount) {
-            user.balance -= amount;
-            addHistory(user, `🏦 Вывод -${amount} 💎`, -amount);
-            await user.save();
-            if (txId) await Transaction.findByIdAndUpdate(txId, { status: 'completed' });
-            await AdminLog.create({ action: 'withdraw_approve', target_uid: targetUid, amount, details: 'Через бот' });
-            bot.sendMessage(targetUid, `✅ Заявка на вывод ${amount} 💎 одобрена!`).catch(()=>{});
-            bot.sendMessage(chatId, `✅ Вывод одобрён.\nИгрок: ${targetUid}\nСумма: ${amount} 💎`);
-        } else bot.sendMessage(chatId, "❌ Недостаточно средств у игрока.");
-        return;
-    }
-    if (q.data.startsWith('withdraw_no_')) {
-        const parts = q.data.split('_');
-        const targetUid = parts[2];
-        const amount = parseInt(parts[3]);
-        const txId = parts[4];
-        bot.editMessageReplyMarkup({ inline_keyboard: [] }, { chat_id: chatId, message_id: msgId });
-        if (txId) await Transaction.findByIdAndUpdate(txId, { status: 'rejected' });
-        await AdminLog.create({ action: 'withdraw_reject', target_uid: targetUid, amount });
-        bot.sendMessage(targetUid, `❌ Заявка на вывод ${amount} 💎 отклонена.`).catch(()=>{});
-        bot.sendMessage(chatId, "❌ Заявка отклонена.");
+    if (q.data.startsWith('withdraw_ok_') || q.data.startsWith('withdraw_no_')) {
+        if (uid !== CONFIG.ADMIN_ID) return; // только владелец
+        const approve = q.data.startsWith('withdraw_ok_');
+        const txId = q.data.split('_')[4];
+        bot.editMessageReplyMarkup({ inline_keyboard: [] }, { chat_id: chatId, message_id: msgId }).catch(() => {});
+        try {
+            const r = approve ? await approveWithdraw(txId) : await rejectWithdraw(txId);
+            if (r.err) return bot.sendMessage(chatId, "❌ " + r.err);
+            // данные берём из базы, а не из callback_data
+            await AdminLog.create({ action: approve ? 'withdraw_approve' : 'withdraw_reject', target_uid: r.tx.uid, amount: r.tx.amount, details: 'Через бот' });
+            bot.sendMessage(r.tx.uid, approve ? `✅ Заявка на вывод ${r.tx.amount} 💎 одобрена!` : `❌ Заявка на вывод ${r.tx.amount} 💎 отклонена.`).catch(()=>{});
+            bot.sendMessage(chatId, approve ? `✅ Вывод одобрён.\nИгрок: ${r.tx.uid}\nСумма: ${r.tx.amount} 💎` : "❌ Заявка отклонена, сумма возвращена игроку.");
+        } catch (e) { console.error('[withdraw cb]', e.message); bot.sendMessage(chatId, "❌ Ошибка обработки заявки."); }
         return;
     }
     if (uid !== CONFIG.ADMIN_ID) return;

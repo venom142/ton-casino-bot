@@ -2,7 +2,7 @@ const express = require('express');
 const router = express.Router();
 const Transaction = require('../../models/Transaction');
 const User = require('../../models/User');
-const { addHistory } = require('../../utils/helpers');
+const { approveWithdraw, rejectWithdraw } = require('../../utils/wallet');
 
 module.exports = (bot) => {
     // Все депозиты
@@ -32,29 +32,19 @@ module.exports = (bot) => {
     // Подтвердить вывод
     router.post('/admin/finance/approve', async (req, res) => {
         try {
-            const { tx_id } = req.body;
-            const tx = await Transaction.findByIdAndUpdate(tx_id, { status: 'completed' }, { new: true });
-            if (!tx) return res.json({ err: "Транзакция не найдена" });
-
-            const user = await User.findOne({ uid: tx.uid });
-            if (user) {
-                user.balance -= tx.amount;
-                addHistory(user, `🏦 Вывод -${tx.amount} 💎`, -tx.amount);
-                await user.save();
-            }
-
-            bot.sendMessage(tx.uid, `✅ Ваша заявка на вывод ${tx.amount} 💎 одобрена!`).catch(()=>{});
+            const r = await approveWithdraw(req.body && req.body.tx_id);
+            if (r.err) return res.json({ err: r.err });
+            bot.sendMessage(r.tx.uid, `✅ Ваша заявка на вывод ${r.tx.amount} 💎 одобрена!`).catch(()=>{});
             res.json({ success: true });
         } catch(e) { res.json({ err: "Ошибка" }); }
     });
 
-    // Отклонить вывод
+    // Отклонить вывод (замороженная сумма возвращается игроку)
     router.post('/admin/finance/reject', async (req, res) => {
         try {
-            const { tx_id } = req.body;
-            const tx = await Transaction.findByIdAndUpdate(tx_id, { status: 'rejected' }, { new: true });
-            if (!tx) return res.json({ err: "Транзакция не найдена" });
-            bot.sendMessage(tx.uid, `❌ Ваша заявка на вывод ${tx.amount} 💎 отклонена.`).catch(()=>{});
+            const r = await rejectWithdraw(req.body && req.body.tx_id);
+            if (r.err) return res.json({ err: r.err });
+            bot.sendMessage(r.tx.uid, `❌ Ваша заявка на вывод ${r.tx.amount} 💎 отклонена.`).catch(()=>{});
             res.json({ success: true });
         } catch(e) { res.json({ err: "Ошибка" }); }
     });

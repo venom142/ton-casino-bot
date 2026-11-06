@@ -1,7 +1,8 @@
 const express = require('express');
 const router = express.Router();
 const User = require('../models/User');
-const { addHistory, safeUid } = require('../utils/helpers');
+const { safeUid } = require('../utils/helpers');
+const { credit, histEntry } = require('../utils/wallet');
 
 router.post('/roulette', async (req, res) => {
     try {
@@ -12,8 +13,13 @@ router.post('/roulette', async (req, res) => {
         if (!user) return res.json({ err: "Ошибка профиля" });
         const now = Date.now();
         const dayMs = 24 * 60 * 60 * 1000;
-        const lastSpin = user.last_roulette_at ? new Date(user.last_roulette_at).getTime() : 0;
-        if (lastSpin && now - lastSpin < dayMs) {
+        // АТОМАРНО: «занимаем» суточную попытку; параллельные запросы получат null
+        const claimed = await User.findOneAndUpdate(
+            { uid: uidStr, $or: [{ last_roulette_at: null }, { last_roulette_at: { $lte: new Date(now - dayMs) } }] },
+            { $set: { last_roulette_at: new Date(now) } }
+        );
+        if (!claimed) {
+            const lastSpin = user.last_roulette_at ? new Date(user.last_roulette_at).getTime() : now;
             const remainingMinutes = Math.max(1, Math.ceil((dayMs - (now - lastSpin)) / 60000));
             const hours = Math.floor(remainingMinutes / 60);
             const minutes = remainingMinutes % 60;
@@ -29,11 +35,10 @@ router.post('/roulette', async (req, res) => {
         const roll = Math.random() * 100;
         let sum = 0, prize = prizes[prizes.length - 1];
         for (const item of prizes) { sum += item.chance; if (roll < sum) { prize = item; break; } }
-        user.last_roulette_at = new Date(now);
-        if (prize.amount > 0) { user.balance += prize.amount; addHistory(user, `🎡 Рулетка ${prize.label}`, prize.amount); }
-        else { addHistory(user, "🎡 Рулетка: пусто", 0); }
-        await user.save();
-        res.json({ prize: prize.label, amount: prize.amount, balance: Math.floor(user.balance), msg: prize.amount > 0 ? `🎡 Выпал приз ${prize.label}!` : "😭 В этот раз пусто" });
+        let balance = claimed.balance;
+        if (prize.amount > 0) { const u = await credit(uidStr, prize.amount, `🎡 Рулетка ${prize.label}`); if (u) balance = u.balance; }
+        else { await User.updateOne({ uid: uidStr }, { $push: { history: histEntry("🎡 Рулетка: пусто", 0) } }); }
+        res.json({ prize: prize.label, amount: prize.amount, balance: Math.floor(balance), msg: prize.amount > 0 ? `🎡 Выпал приз ${prize.label}!` : "😭 В этот раз пусто" });
     } catch (e) { res.json({ err: "Ошибка рулетки" }); }
 });
 
