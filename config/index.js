@@ -2,7 +2,7 @@ require('dotenv').config();
 
 const CONFIG = {
     ADMIN_ID: 8475323865, 
-    WALLET: "UQDoTj0hCwJbI-9fziRCyUZzO2XHmtcDzuiAiGjxG21G3dIX", 
+    WALLET: process.env.WALLET_ADDRESS || "UQDoTj0hCwJbI-9fziRCyUZzO2XHmtcDzuiAiGjxG21G3dIX", 
     TON_KEY: process.env.TON_KEY, 
     START_BALANCE: 100, 
     HOTTAP_RATE: 10000,

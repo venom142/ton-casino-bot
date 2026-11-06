@@ -11,6 +11,7 @@ const User = require('./models/User');
 const Promo = require('./models/Promo');
 const Transaction = require('./models/Transaction');
 const { approveWithdraw, rejectWithdraw } = require('./utils/wallet');
+const { scanDeposits } = require('./utils/deposits');
 const AdminLog = require('./models/AdminLog');
 const Ban = require('./models/Ban');
 const Task = require('./models/Task');
@@ -574,27 +575,7 @@ bot.on('message', async (msg) => {
 // ==========================================
 // 💸 СКАНЕР ДОНАТОВ
 // ==========================================
-setInterval(async () => {
-    try {
-        const res = await axios.get(`https://toncenter.com/api/v2/getTransactions?address=UQDoTj0hCwJbI-9fziRCyUZzO2XHmtcDzuiAiGjxG21G3dIX&limit=10&api_key=`);
-        if (!res.data?.ok) return;
-        for (let tx of res.data.result) {
-            const comment = tx.in_msg?.message?.trim(), lt = tx.transaction_id.lt, val = parseFloat(tx.in_msg?.value || 0) / 1e9;
-            if (!comment || isNaN(comment) || val <= 0) continue;
-            const user = await User.findOne({ uid: comment });
-            if (user && BigInt(lt) > BigInt(user.last_lt || "0")) { 
-                const addedHottap = Math.floor(val * CONFIG.HOTTAP_RATE);
-                user.balance = Math.floor(user.balance + addedHottap); 
-                user.last_lt = lt.toString();
-                user.total_deposited = (user.total_deposited || 0) + val;
-                addHistory(user, `💰 Донат +${addedHottap} 💎`, addedHottap);
-                await user.save();
-                await Transaction.create({ uid: comment, type: 'deposit', ton_amount: val, amount: addedHottap, status: 'completed', tx_hash: tx.transaction_id.hash });
-                bot.sendMessage(user.uid, `💎 **ДОНАТ ХОТ ТАП!**\n+${addedHottap} 💎`).catch(()=>{});
-            }
-        }
-    } catch (err) {}
-}, 15000);
+setInterval(() => { scanDeposits(CONFIG, bot); }, 15000);
 
 // ==========================================
 // 🌐 API
