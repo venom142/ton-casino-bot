@@ -348,96 +348,99 @@
             .bonus-choice span { position: relative; z-index: 1; }
             .bonus-choice.roulette { border-color: rgba(255,215,0,0.55); box-shadow: 0 0 22px rgba(255,215,0,0.16), inset 0 0 20px rgba(255,0,255,0.08); }
             @keyframes bonusShine { 0% { transform: rotate(18deg) translateX(-130%); } 48%,100% { transform: rotate(18deg) translateX(130%); } }
-            .roulette-stage { display: grid; place-items: center; margin: 16px 0 18px; position: relative; }
+            /* ===== РУЛЕТКА ===== */
+            .roulette-stage { display: grid; place-items: center; margin: 20px 0 22px; position: relative; --wheel: min(76vw, 300px); }
+            .roulette-frame { position: relative; width: calc(var(--wheel) + 30px); height: calc(var(--wheel) + 30px); display: grid; place-items: center; border-radius: 50%; }
+            .roulette-frame:before { /* вращающееся неоновое кольцо */
+                content: ""; position: absolute; inset: 0; border-radius: 50%;
+                background: conic-gradient(#ffd700, #ff00ff, #00f0ff, #ffd700, #ff00ff, #00f0ff, #ffd700);
+                box-shadow: 0 0 34px rgba(255,215,0,0.38), 0 0 70px rgba(255,0,255,0.24);
+                animation: rlRing 9s linear infinite;
+            }
+            .roulette-frame:after { /* тёмный ободок под колесом */
+                content: ""; position: absolute; inset: 7px; border-radius: 50%;
+                background: radial-gradient(circle, #1a0b2b 60%, #0b0414 100%);
+                box-shadow: inset 0 0 18px rgba(0,0,0,0.8);
+            }
+            .roulette-bulbs { position: absolute; inset: 11px; border-radius: 50%; border: 5px dotted rgba(255,245,200,0.95); z-index: 1; filter: drop-shadow(0 0 4px rgba(255,215,0,0.9)); animation: rlBlink 1.6s steps(2) infinite; }
             .roulette-pointer {
-                width: 0;
-                height: 0;
-                border-left: 16px solid transparent;
-                border-right: 16px solid transparent;
-                border-top: 30px solid var(--gold);
-                filter: drop-shadow(0 0 10px rgba(255,215,0,0.75));
-                position: relative;
-                z-index: 3;
-                margin-bottom: -14px;
+                position: absolute; top: -10px; left: 50%; width: 38px; height: 50px; margin-left: -19px; z-index: 6;
+                background: linear-gradient(180deg, #fff6b8, #ffd700 55%, #c98a00);
+                clip-path: polygon(50% 100%, 0 26%, 14% 0, 86% 0, 100% 26%);
+                filter: drop-shadow(0 4px 6px rgba(0,0,0,0.65)) drop-shadow(0 0 8px rgba(255,215,0,0.85));
+                transform-origin: 50% 12%;
             }
+            .roulette-pointer:after { content: ""; position: absolute; top: 9px; left: 50%; width: 11px; height: 11px; margin-left: -5.5px; border-radius: 50%; background: #3a2400; box-shadow: inset 0 0 3px #000; }
+            .roulette-stage.spinning .roulette-pointer { animation: rlTick .16s ease-in-out infinite alternate; }
+            .roulette-stage.spinning .roulette-bulbs { animation: rlBlink .28s steps(2) infinite; }
             .roulette-wheel {
-                width: min(76vw, 300px);
-                height: min(76vw, 300px);
-                border-radius: 50%;
-                position: relative;
-                border: 5px solid rgba(0,240,255,0.75);
-                background: conic-gradient(#00f0ff 0deg 72deg, #ff00ff 72deg 144deg, #ffd700 144deg 216deg, #00ff88 216deg 288deg, #3b2a66 288deg 360deg);
-                box-shadow: 0 0 34px rgba(0,240,255,0.34), inset 0 0 30px rgba(0,0,0,0.42);
-                transition: transform 3.8s cubic-bezier(0.12, 0.78, 0.18, 1);
-                overflow: hidden;
+                width: var(--wheel); height: var(--wheel); border-radius: 50%; position: relative; z-index: 2; overflow: hidden;
+                background:
+                    radial-gradient(circle, rgba(0,0,0,0) 0 36%, rgba(0,0,0,0.30) 100%),
+                    repeating-conic-gradient(from 0deg, rgba(255,255,255,0.8) 0 0.7deg, transparent 0.7deg 72deg),
+                    conic-gradient(#0a8bff 0deg 72deg, #a62bff 72deg 144deg, #ffbe00 144deg 216deg, #00cf68 216deg 288deg, #2b2244 288deg 360deg);
+                box-shadow: inset 0 0 0 3px rgba(255,255,255,0.22), inset 0 0 44px rgba(0,0,0,0.55);
+                transition: transform 4.6s cubic-bezier(0.08, 0.72, 0.12, 1);
+                will-change: transform;
             }
-            .roulette-wheel:before {
-                content: "";
-                position: absolute;
-                inset: 12px;
-                border-radius: 50%;
-                border: 2px dashed rgba(255,255,255,0.45);
-                box-shadow: inset 0 0 18px rgba(0,0,0,0.35);
-            }
-            .roulette-wheel:after {
-                content: "💎";
-                position: absolute;
-                inset: 50%;
-                width: 70px;
-                height: 70px;
-                margin: -35px;
-                border-radius: 50%;
-                display: grid;
-                place-items: center;
-                background: rgba(0,0,0,0.78);
-                border: 3px solid #fff;
-                box-shadow: 0 0 20px rgba(255,255,255,0.32);
-                font-size: 32px;
+            .roulette-wheel:before { /* блик */
+                content: ""; position: absolute; inset: 0; border-radius: 50%;
+                background: linear-gradient(135deg, rgba(255,255,255,0.20), transparent 38%);
+                pointer-events: none;
             }
             .roulette-label {
-                position: absolute;
-                left: 50%;
-                top: 50%;
-                width: 88px;
-                margin-left: -44px;
-                margin-top: -13px;
-                color: #fff;
-                font-size: 13px;
-                font-weight: 900;
-                text-shadow: 0 2px 8px rgba(0,0,0,0.8);
-                transform-origin: 44px 13px;
+                position: absolute; left: 50%; top: 50%; width: 66px; height: 46px; margin: -23px 0 0 -33px;
+                display: flex; flex-direction: column; align-items: center; justify-content: center;
+                color: #fff; font-weight: 900; text-align: center; text-shadow: 0 2px 6px rgba(0,0,0,0.9);
+                --r: calc(var(--wheel) * 0.335);
             }
-            .roulette-label.p1 { transform: rotate(36deg) translateY(-104px) rotate(-36deg); }
-            .roulette-label.p2 { transform: rotate(108deg) translateY(-104px) rotate(-108deg); }
-            .roulette-label.p3 { transform: rotate(180deg) translateY(-104px) rotate(-180deg); }
-            .roulette-label.p4 { transform: rotate(252deg) translateY(-104px) rotate(-252deg); }
-            .roulette-label.p5 { transform: rotate(324deg) translateY(-104px) rotate(-324deg); }
-            .roulette-odds {
-                display: grid;
-                grid-template-columns: 1fr 1fr;
-                gap: 7px;
-                margin: 12px 0 6px;
+            .roulette-label .rl-ico { font-size: 21px; line-height: 1; }
+            .roulette-label .rl-val { font-size: 16px; line-height: 1.15; letter-spacing: 0.3px; }
+            .roulette-label.p1 { transform: rotate(36deg) translateY(calc(var(--r) * -1)); }
+            .roulette-label.p2 { transform: rotate(108deg) translateY(calc(var(--r) * -1)); }
+            .roulette-label.p3 { transform: rotate(180deg) translateY(calc(var(--r) * -1)); }
+            .roulette-label.p4 { transform: rotate(252deg) translateY(calc(var(--r) * -1)); }
+            .roulette-label.p5 { transform: rotate(324deg) translateY(calc(var(--r) * -1)); }
+            .roulette-hub {
+                position: absolute; z-index: 5; width: 62px; height: 62px; border-radius: 50%; display: grid; place-items: center; font-size: 27px;
+                background: radial-gradient(circle at 35% 30%, #fff8cf, #ffd700 48%, #b8860b);
+                border: 3px solid #fff; box-shadow: 0 0 0 4px rgba(0,0,0,0.55), 0 0 24px rgba(255,215,0,0.85);
+                animation: rlPulse 2.2s ease-in-out infinite;
             }
+            .roulette-odds { display: grid; grid-template-columns: 1fr 1fr; gap: 7px; margin: 12px 0 6px; }
             .roulette-odds div {
-                padding: 8px 6px;
-                border-radius: 12px;
-                background: rgba(0,0,0,0.34);
-                border: 1px solid rgba(255,255,255,0.08);
-                color: rgba(255,255,255,0.86);
-                font-size: 11px;
-                font-weight: 900;
+                padding: 8px 8px; border-radius: 12px; background: rgba(0,0,0,0.36);
+                border: 1px solid rgba(255,255,255,0.09); color: rgba(255,255,255,0.9);
+                font-size: 11px; font-weight: 900; text-align: left;
             }
+            .roulette-odds div:before { content: ""; display: inline-block; width: 9px; height: 9px; margin-right: 7px; border-radius: 50%; background: var(--c, #fff); box-shadow: 0 0 8px var(--c, #fff); }
             .roulette-result {
-                min-height: 46px;
-                margin: 12px 0;
-                color: #fff;
-                font-size: 18px;
-                font-weight: 900;
-                text-shadow: 0 0 14px rgba(0,240,255,0.55);
-                white-space: pre-line;
+                min-height: 50px; margin: 12px 0; padding: 12px 10px; display: grid; place-items: center;
+                color: #fff; font-size: 17px; font-weight: 900; text-shadow: 0 0 14px rgba(0,240,255,0.55); white-space: pre-line;
+                border-radius: 14px; background: rgba(0,0,0,0.32); border: 1px solid rgba(255,255,255,0.08);
             }
-            .roulette-result.win { color: var(--gold); animation: prizePop .8s ease both; }
+            .roulette-result.win { color: var(--gold); border-color: rgba(255,215,0,0.55); box-shadow: 0 0 24px rgba(255,215,0,0.30), inset 0 0 18px rgba(255,215,0,0.10); text-shadow: 0 0 14px rgba(255,215,0,0.7); animation: prizePop .8s ease both; }
+            .rl-confetti { position: absolute; left: 50%; top: 50%; z-index: 8; font-size: 20px; pointer-events: none; animation: rlConf 1.3s ease-out forwards; }
             @keyframes prizePop { 0% { transform: scale(.86); opacity: .4; } 55% { transform: scale(1.12); opacity: 1; } 100% { transform: scale(1); opacity: 1; } }
+            @keyframes rlRing { to { transform: rotate(360deg); } }
+            @keyframes rlBlink { 0% { opacity: 1; } 100% { opacity: .35; } }
+            @keyframes rlTick { from { transform: rotate(-9deg); } to { transform: rotate(7deg); } }
+            @keyframes rlPulse { 0%,100% { box-shadow: 0 0 0 4px rgba(0,0,0,0.55), 0 0 18px rgba(255,215,0,0.65); } 50% { box-shadow: 0 0 0 4px rgba(0,0,0,0.55), 0 0 34px rgba(255,215,0,1); } }
+            @keyframes rlConf { 0% { transform: translate(-50%,-50%) scale(.4) rotate(0); opacity: 1; } 100% { transform: translate(calc(-50% + var(--dx)), calc(-50% + var(--dy))) scale(1.1) rotate(var(--rot)); opacity: 0; } }
+
+            /* ===== VIP: золотая надпись с короной, метка в топе ===== */
+            .vip-crown { display: inline-block; filter: drop-shadow(0 0 6px rgba(255,215,0,0.9)); }
+            .vip-title {
+                font-weight: 900; letter-spacing: 1px;
+                background: linear-gradient(180deg, #fff6b8 0%, #ffd700 45%, #d49a00 100%);
+                -webkit-background-clip: text; background-clip: text; color: transparent; -webkit-text-fill-color: transparent;
+                filter: drop-shadow(0 0 7px rgba(255,215,0,0.6));
+            }
+            .vip-tag {
+                display: inline-block; margin-left: 7px; padding: 1px 7px; border-radius: 7px; font-size: 11px; font-weight: 900; letter-spacing: .5px;
+                color: #2b1a00; background: linear-gradient(135deg, #fff3a6, #ffd700 50%, #e0a100); box-shadow: 0 0 10px rgba(255,215,0,0.55); vertical-align: middle;
+            }
+            .top-row.vip { border-color: rgba(255,215,0,0.5); background: linear-gradient(90deg, rgba(255,215,0,0.12), rgba(0,0,0,0.28)); }
 
         
             /* VIP ХОТ ТАП — красивый экран загрузки */
@@ -922,14 +925,14 @@
         <!-- ВКЛАДКА 5: ПРОФИЛЬ -->
         <div id="pg5" class="page">
             <div class="card">
-                <h2 style="color:var(--neon-cyan); margin-top:0;">👤 VIP ПРОФИЛЬ</h2>
+                <h2 id="profTitle" style="color:var(--neon-cyan); margin-top:0;">👤 ПРОФИЛЬ</h2>
                 <div class="profile-grid">
                     <div class="profile-stat"><div class="label">ID игрока</div><div class="value" id="profUid">...</div></div>
                     <div class="profile-stat"><div class="label">Баланс</div><div class="value"><span id="balP">0</span> 💎</div></div>
                     <div class="profile-stat"><div class="label">Спины</div><div class="value" id="profSpins">0</div></div>
                     <div class="profile-stat"><div class="label">Победы</div><div class="value" id="profWins">0</div></div>
                     <div class="profile-stat"><div class="label">Промо</div><div class="value" id="profPromos">0</div></div>
-                    <div class="profile-stat"><div class="label">Версия</div><div class="value" style="font-size:15px;" id="profVersion">Alpha</div></div>
+                    <div class="profile-stat"><div class="label">Версия</div><div class="value" style="font-size:15px;" id="profVersion">Beta 1.0</div></div>
                 </div>
             </div>
             
@@ -948,7 +951,7 @@
                 </div>
                 <div class="profile-stat" style="margin-top:10px;">
                     <div class="label">Версия игры</div>
-                    <div class="value" style="font-size:16px;">VIP ХОТ ТАП Alpha 1.0</div>
+                    <div class="value" style="font-size:16px;">VIP ХОТ ТАП Beta 1.0</div>
                 </div>
                 <button class="btn-main dark" onclick="sh(5)" style="margin-top: 15px; font-size: 14px;">🔙 НАЗАД В ПРОФИЛЬ</button>
             </div>
@@ -996,18 +999,22 @@
                 <div class="promo-card-title">🎡 Бесплатная рулетка</div>
                 <div class="small-info">Возможные призы и шансы выпадения. Доступно 1 раз в 24 часа.</div>
                 <div class="roulette-odds">
-                    <div>💎 +10 — 30%</div><div>💎 +25 — 20%</div>
-                    <div>💎 +50 — 10%</div><div>💎 +100 — 5%</div>
-                    <div>😭 Пусто — 35%</div>
+                    <div style="--c:#0a8bff">💎 +10 — 30%</div><div style="--c:#a62bff">💎 +25 — 20%</div>
+                    <div style="--c:#ffbe00">💎 +50 — 10%</div><div style="--c:#00cf68">💎 +100 — 5%</div>
+                    <div style="--c:#6b5a99">😭 Пусто — 35%</div>
                 </div>
-                <div class="roulette-stage">
-                    <div class="roulette-pointer"></div>
-                    <div class="roulette-wheel" id="rouletteWheel">
-                        <div class="roulette-label p1">💎 +10</div>
-                        <div class="roulette-label p2">💎 +25</div>
-                        <div class="roulette-label p3">💎 +50</div>
-                        <div class="roulette-label p4">💎 +100</div>
-                        <div class="roulette-label p5">😭 Пусто</div>
+                <div class="roulette-stage" id="rouletteStage">
+                    <div class="roulette-frame">
+                        <div class="roulette-bulbs"></div>
+                        <div class="roulette-pointer"></div>
+                        <div class="roulette-wheel" id="rouletteWheel">
+                            <div class="roulette-label p1"><span class="rl-ico">💎</span><span class="rl-val">+10</span></div>
+                            <div class="roulette-label p2"><span class="rl-ico">💎</span><span class="rl-val">+25</span></div>
+                            <div class="roulette-label p3"><span class="rl-ico">💎</span><span class="rl-val">+50</span></div>
+                            <div class="roulette-label p4"><span class="rl-ico">💎</span><span class="rl-val">+100</span></div>
+                            <div class="roulette-label p5"><span class="rl-ico">😭</span><span class="rl-val">Пусто</span></div>
+                        </div>
+                        <div class="roulette-hub">🎡</div>
                     </div>
                 </div>
                 <div class="roulette-result" id="rouletteResult">Нажми кнопку и забери бесплатный приз</div>
@@ -1305,6 +1312,7 @@
                 
                 if(n === 3) loadTop();
                 if(n === 5 || n === 8) loadProfile();
+                if(n === 11) loadTasks();
                 
                 if(n === 2) {
                     if(!crashPollInterval) crashPollInterval = setInterval(pollCrashState, 500);
@@ -1362,6 +1370,16 @@
                 if (bp) bp.innerText = formatBal(bal);
             }
 
+            function escH(v) {
+                return String(v == null ? '' : v).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+            }
+            // VIP: у VIP золотая надпись с короной, у остальных просто «Профиль»
+            function applyVipState(isVip) {
+                window.IS_VIP = !!isVip;
+                const t = document.getElementById('profTitle');
+                if (t) t.innerHTML = isVip ? '<span class="vip-crown">👑</span> <span class="vip-title">VIP</span> ПРОФИЛЬ' : '👤 ПРОФИЛЬ';
+            }
+
             async function upd() {
                 try {
                     const r = await fetch('/api/sync', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({uid})});
@@ -1373,6 +1391,7 @@
                         return;
                     }
                     updateBal(d.balance);
+                    applyVipState(d.is_vip);
                     // VIP badge
                     const vb1 = document.getElementById('vipBadge1');
                     const vb2 = document.getElementById('vipBadge2');
@@ -1382,15 +1401,22 @@
             }
 
             async function loadTop() {
-                document.getElementById('topList').innerHTML = "Загрузка...";
-                const r = await fetch('/api/leaderboard', {method:'POST'});
-                const d = await r.json();
-                let h = '';
-                d.forEach((u,i) => {
-                    let rank = i===0?'🥇':i===1?'🥈':i===2?'🥉':(i+1);
-                    h += '<div class="top-row"><div class="top-rank">'+rank+'</div><div style="flex:1; text-align:left; color:#ccc;">ID '+u.uid+'</div><div style="color:var(--neon-cyan); font-weight:900;">'+formatBal(u.balance)+' 💎</div></div>';
-                });
-                document.getElementById('topList').innerHTML = h;
+                const box = document.getElementById('topList');
+                box.innerHTML = "Загрузка...";
+                try {
+                    const r = await fetch('/api/leaderboard', {method:'POST'});
+                    const d = await r.json();
+                    if (!Array.isArray(d) || d.length === 0) { box.innerHTML = '<div class="small-info">Пока нет игроков</div>'; return; }
+                    let h = '';
+                    d.forEach((u,i) => {
+                        let rank = i===0?'🥇':i===1?'🥈':i===2?'🥉':(i+1);
+                        const vip = u.is_vip ? '<span class="vip-tag">👑 VIP</span>' : '';
+                        h += '<div class="top-row'+(u.is_vip?' vip':'')+'"><div class="top-rank">'+rank+'</div><div style="flex:1; text-align:left; color:#ccc;">ID '+escH(u.uid)+vip+'</div><div style="color:var(--neon-cyan); font-weight:900;">'+formatBal(u.balance)+' 💎</div></div>';
+                    });
+                    box.innerHTML = h;
+                } catch(e) {
+                    box.innerHTML = '<div class="small-info">Не удалось загрузить топ. Попробуйте позже.</div>';
+                }
             }
 
             // --- ИГРА: СЛОТЫ ---
@@ -1687,6 +1713,7 @@
                     const r = await fetch('/api/profile', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({uid})});
                     const d = await r.json();
                     if(d.err) return gameAlert(d.err);
+                    applyVipState(d.is_vip);
                     const profUid = document.getElementById('profUid');
                     if(profUid) profUid.innerText = d.uid;
                     document.getElementById('profSpins').innerText = formatBal(d.spins || 0);
@@ -1713,14 +1740,33 @@
 
             let rouletteRotation = 0;
             const roulettePrizeIndex = { "💎 +10": 0, "💎 +25": 1, "💎 +50": 2, "💎 +100": 3, "😭 Пусто": 4 };
+            const ROULETTE_MS = 4600;
+            function burstConfetti(stage, win) {
+                if (!stage) return;
+                const icons = win ? ['💎','✨','⭐','🎉','💰'] : ['💨','😶'];
+                const n = win ? 26 : 6;
+                for (let i = 0; i < n; i++) {
+                    const el = document.createElement('span');
+                    el.className = 'rl-confetti';
+                    el.textContent = icons[Math.floor(Math.random() * icons.length)];
+                    const ang = Math.random() * Math.PI * 2, dist = 70 + Math.random() * 120;
+                    el.style.setProperty('--dx', Math.round(Math.cos(ang) * dist) + 'px');
+                    el.style.setProperty('--dy', Math.round(Math.sin(ang) * dist - 30) + 'px');
+                    el.style.setProperty('--rot', Math.round(Math.random() * 540 - 270) + 'deg');
+                    stage.appendChild(el);
+                    setTimeout(() => el.remove(), 1400);
+                }
+            }
             async function spinBonusRoulette() {
                 const btn = document.getElementById('btnRoulette');
                 const wheel = document.getElementById('rouletteWheel');
+                const stage = document.getElementById('rouletteStage');
                 const resultBox = document.getElementById('rouletteResult');
                 if (!btn || !wheel || !resultBox) return gameAlert('Ошибка рулетки');
                 btn.disabled = true;
                 resultBox.classList.remove('win');
                 resultBox.innerText = 'Рулетка запускается...';
+                let spinning = false;
                 try {
                     const r = await fetch('/api/roulette', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({uid})});
                     const d = await r.json();
@@ -1732,60 +1778,124 @@
                     const idx = roulettePrizeIndex[d.prize] ?? 4;
                     const segment = 72;
                     const center = idx * segment + segment / 2;
-                    rouletteRotation = Math.ceil(rouletteRotation / 360) * 360 + 360 * 5 + (360 - center) + Math.floor(Math.random() * 18 - 9);
+                    rouletteRotation = Math.ceil(rouletteRotation / 360) * 360 + 360 * 6 + (360 - center) + Math.floor(Math.random() * 30 - 15);
+                    spinning = true;
+                    if (stage) stage.classList.add('spinning');
                     wheel.style.transform = 'rotate(' + rouletteRotation + 'deg)';
                     setTimeout(() => {
+                        if (stage) stage.classList.remove('spinning');
                         resultBox.innerText = d.msg || ('Выпало: ' + d.prize);
                         resultBox.classList.add('win');
+                        burstConfetti(stage, (d.amount || 0) > 0);
                         if (d.balance !== undefined) updateBal(d.balance);
                         gameAlert(d.msg || ('Выпало: ' + d.prize));
                         if(window.navigator.vibrate) window.navigator.vibrate([80,50,120]);
                         loadProfile();
-                    }, 3900);
+                    }, ROULETTE_MS + 100);
                 } catch(e) {
                     resultBox.innerText = 'Ошибка рулетки';
                     gameAlert('Ошибка рулетки');
                 } finally {
-                    setTimeout(() => { btn.disabled = false; }, 4000);
+                    setTimeout(() => { btn.disabled = false; }, spinning ? ROULETTE_MS + 300 : 600);
                 }
             }
 
+            // ---------- Задания ----------
+            const tasksByCode = {};
+            const taskOpenedAt = {};   // code -> момент, когда игрок открыл ссылку/канал
+            function taskBtn(t) {
+                if (t.completed) return { text: '✅ ВЫПОЛНЕНО', action: '', off: true };
+                if (t.type === 'referral') return { text: '⏳ СКОРО', action: '', off: true };
+                if (t.type === 'channel_sub' || t.type === 'link') {
+                    if (!taskOpenedAt[t.code]) return { text: t.type === 'channel_sub' ? '📢 ПЕРЕЙТИ В КАНАЛ' : '🔗 ПЕРЕЙТИ', action: "openTask('" + escH(t.code) + "')" };
+                    return { text: '✅ ПРОВЕРИТЬ', action: "completeTask('" + escH(t.code) + "')" };
+                }
+                if (t.type === 'play_games') return { text: '✅ ПРОВЕРИТЬ', action: "completeTask('" + escH(t.code) + "')" };
+                return { text: '🎁 ЗАБРАТЬ', action: "completeTask('" + escH(t.code) + "')" };
+            }
             async function loadTasks() {
+                const container = document.getElementById('tasksList');
+                if (!container) return;
                 try {
                     const r = await fetch('/api/tasks/list', { method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({uid}) });
-                    const d = await r.json();
-                    const container = document.getElementById('tasksList');
-                    if (!container) return;
-                    if (!d.tasks || d.tasks.length === 0) { container.innerHTML = '<div class="small-info">Пока нет заданий</div>'; return; }
+                    let d = null;
+                    try { d = await r.json(); } catch(e) {}
+                    if (!d) { container.innerHTML = '<div class="small-info">Не удалось загрузить задания (ошибка сервера ' + r.status + ')</div>'; return; }
+                    const tasks = Array.isArray(d.tasks) ? d.tasks : [];
+                    if (tasks.length === 0) { container.innerHTML = '<div class="small-info">' + escH(d.err || 'Пока нет заданий') + '</div>'; return; }
                     let html = '';
-                    for (const t of d.tasks) {
-                        const done = t.completed;
-                        const btnText = done ? '✅ ВЫПОЛНЕНО' : '✅ ВЫПОЛНИТЬ';
-                        const btnStyle = done ? 'background:#555;box-shadow:none;' : '';
-                        const onclick = done ? '' : `onclick="completeTask('${t.code}')"`;
-                        html += `<div class="bonus-choice" style="border-color: rgba(0,255,140,0.55); text-align: left; padding: 14px 16px; cursor: default; margin-bottom: 10px;">
-                            <div style="display: flex; justify-content: space-between; align-items: center;"><span style="font-size: 16px;">${t.title}</span><span style="color: var(--gold); font-size: 18px;">+${t.reward} 💎</span></div>
-                            <div style="font-size: 12px; color: #888; margin-top: 6px; text-transform: none; font-weight: 400;">${t.description}</div>
-                            <button class="btn-main" style="margin-top: 12px; font-size: 14px; ${btnStyle}" ${onclick} id="btnTask_${t.code}">${btnText}</button>
-                        </div>`;
+                    for (const t of tasks) {
+                        tasksByCode[t.code] = t;
+                        const b = taskBtn(t);
+                        const btnStyle = b.off ? 'background:#555;box-shadow:none;' : '';
+                        const onclick = b.action ? 'onclick="' + b.action + '"' : 'disabled';
+                        let extra = '';
+                        if (t.type === 'play_games' && !t.completed) {
+                            const have = Math.min(t.progress || 0, t.required || 0);
+                            const pct = Math.round(have / (t.required || 1) * 100);
+                            extra = '<div style="margin-top:8px;font-size:12px;color:#aaa;text-transform:none;font-weight:700;">Сыграно: ' + have + ' / ' + (t.required || 0) + '</div>'
+                                  + '<div style="height:6px;border-radius:6px;background:rgba(255,255,255,0.1);margin-top:5px;overflow:hidden;"><div style="height:100%;width:' + pct + '%;background:linear-gradient(90deg,var(--neon-cyan),var(--gold));"></div></div>';
+                        }
+                        html += '<div class="bonus-choice" style="border-color: rgba(0,255,140,0.55); text-align: left; padding: 14px 16px; cursor: default; margin-bottom: 10px;">'
+                            + '<div style="display: flex; justify-content: space-between; align-items: center;"><span style="font-size: 16px;">' + escH(t.title) + '</span><span style="color: var(--gold); font-size: 18px;">+' + escH(t.reward) + ' 💎</span></div>'
+                            + (t.description ? '<div style="font-size: 12px; color: #888; margin-top: 6px; text-transform: none; font-weight: 400;">' + escH(t.description) + '</div>' : '')
+                            + extra
+                            + '<button class="btn-main" style="margin-top: 12px; font-size: 14px; ' + btnStyle + '" ' + onclick + ' id="btnTask_' + escH(t.code) + '">' + b.text + '</button>'
+                            + '</div>';
                     }
                     container.innerHTML = html;
-                } catch(e) { console.error(e); }
+                } catch(e) {
+                    container.innerHTML = '<div class="small-info">Не удалось загрузить задания. Проверьте соединение и попробуйте ещё раз.</div>';
+                }
+            }
+            async function openTask(code) {
+                const t = tasksByCode[code];
+                const btn = document.getElementById('btnTask_' + code);
+                if (!t || !btn) return;
+                btn.disabled = true;
+                let wait = 0;
+                try {
+                    const r = await fetch('/api/tasks/start', { method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({uid, task_code: code}) });
+                    const d = await r.json();
+                    if (d.err) { gameAlert(d.err); btn.disabled = false; return; }
+                    wait = Number(d.wait_ms) || 0;
+                } catch(e) { gameAlert('Не удалось открыть задание. Попробуйте ещё раз.'); btn.disabled = false; return; }
+                const url = t.url;
+                try {
+                    if (/^https?:\/\/t\.me\//i.test(url) && tg.openTelegramLink) tg.openTelegramLink(url);
+                    else if (tg.openLink) tg.openLink(url);
+                    else window.open(url, '_blank');
+                } catch(e) { window.open(url, '_blank'); }
+                taskOpenedAt[code] = Date.now();
+                btn.onclick = () => completeTask(code);
+                let left = Math.ceil(wait / 1000);
+                if (left > 0) {
+                    btn.innerText = '⏳ ' + left + ' с';
+                    const timer = setInterval(() => {
+                        left--;
+                        if (left <= 0) { clearInterval(timer); btn.innerText = '✅ ПРОВЕРИТЬ'; btn.disabled = false; }
+                        else btn.innerText = '⏳ ' + left + ' с';
+                    }, 1000);
+                } else { btn.innerText = '✅ ПРОВЕРИТЬ'; btn.disabled = false; }
             }
             async function completeTask(code) {
                 const btn = document.getElementById('btnTask_' + code);
-                if (!btn) return; btn.disabled = true; btn.innerText = "Проверка...";
+                if (!btn) return;
+                const prev = btn.innerText;
+                btn.disabled = true; btn.innerText = 'Проверка...';
                 try {
                     const r = await fetch('/api/tasks/complete', { method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({uid, task_code: code}) });
-                    const d = await r.json(); gameAlert(d.msg || d.err);
-                    if (d.success) { btn.innerText = "✅ ВЫПОЛНЕНО"; btn.style.background = "#555"; btn.style.boxShadow = "none"; upd(); loadTasks(); }
-                    else { btn.disabled = false; btn.innerText = "✅ ВЫПОЛНИТЬ"; }
-                } catch(e) { gameAlert("Ошибка"); btn.disabled = false; btn.innerText = "✅ ВЫПОЛНИТЬ"; }
+                    let d = null;
+                    try { d = await r.json(); } catch(e) {}
+                    if (!d) { gameAlert('Ошибка сервера (' + r.status + '). Попробуйте позже.'); btn.disabled = false; btn.innerText = prev; return; }
+                    gameAlert(d.msg || d.err);
+                    if (d.success) {
+                        if (d.balance !== undefined) updateBal(d.balance);
+                        upd(); loadTasks();
+                    } else if (/уже выполнили/i.test(d.err || '')) { loadTasks(); }
+                    else { btn.disabled = false; btn.innerText = prev === 'Проверка...' ? '✅ ПРОВЕРИТЬ' : prev; }
+                } catch(e) { gameAlert('Ошибка соединения. Попробуйте ещё раз.'); btn.disabled = false; btn.innerText = prev; }
             }
-            const observer = new MutationObserver((mutations) => {
-                mutations.forEach((mutation) => { if (document.getElementById('pg11') && document.getElementById('pg11').classList.contains('active')) loadTasks(); });
-            });
-            observer.observe(document.body, { attributes: true, childList: true, subtree: true });
             setInterval(upd, 5000); upd();
             document.getElementById('bgm').muted = false;
         </script>

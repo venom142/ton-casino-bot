@@ -32,7 +32,7 @@ router.post('/profile', async (req, res) => {
             is_vip: user.is_vip || false,
             promos: user.used_promos ? user.used_promos.length : 0,
             lastActive: user.last_active || null,
-            version: "VIP ХОТ ТАП Alpha 2.0",
+            version: "Beta 1.0",
             history: (user.history || []).slice(0, 10).map(h => ({ text: h.text, amount: h.amount || 0, createdAt: h.createdAt }))
         });
     } catch (e) { res.json({ err: "Ошибка профиля" }); }
@@ -40,10 +40,14 @@ router.post('/profile', async (req, res) => {
 
 router.post('/leaderboard', async (req, res) => {
     try {
-        const tops = await User.find().sort({ balance: -1 }).limit(10);
+        const tops = await User.find().sort({ balance: -1 }).limit(10).select('uid balance is_vip').lean();
         res.json(tops.map(u => {
             const uid = safeUid(u.uid) || 'player';
-            return { uid: uid.substring(0, 3) + "***" + uid.substring(Math.max(uid.length - 2, 0)), balance: Math.floor(u.balance || 0) };
+            return {
+                uid: uid.substring(0, 3) + "***" + uid.substring(Math.max(uid.length - 2, 0)),
+                balance: Math.floor(u.balance || 0),
+                is_vip: !!u.is_vip
+            };
         }));
     } catch (e) { res.json([]); }
 });

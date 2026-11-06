@@ -34,6 +34,97 @@ mongoose.connect(process.env.MONGO_URI)
 
 const bot = new TelegramBot(process.env.BOT_TOKEN, { polling: true });
 const adminState = {};
+const taskDraft = {}; // admin uid -> { step, title, desc, reward, type }
+
+// Типы заданий: что просим у админа и как называем
+const TASK_TYPES = {
+    channel_sub: { label: '📢 Подписка на канал', short: 'канал', ask: '📢 Пришли <b>@канал</b> (например <code>@my_channel</code>).\n⚠️ Бот должен быть <b>админом</b> этого канала, иначе подписку не проверить.' },
+    link:        { label: '🔗 Открыть ссылку', short: 'ссылка', ask: '🔗 Пришли <b>ссылку</b> (начинается с https://). Игрок откроет её и сможет забрать награду.' },
+    play_games:  { label: '🎰 Сыграть N раз', short: 'игры', ask: '🎰 Сколько игр (спинов) нужно сыграть? Пришли число, например <code>10</code>.' },
+    custom:      { label: '🎁 Бесплатное (без проверки)', short: 'бонус', ask: '' }
+};
+const TASK_LEGACY_LABEL = { referral: '👥 реферал (скоро)' };
+
+async function makeTaskCode() {
+    for (let i = 0; i < 6; i++) {
+        const code = 'T' + Date.now().toString(36).toUpperCase() + Math.random().toString(36).slice(2, 4).toUpperCase();
+        if (!(await Task.exists({ code }))) return code;
+    }
+    throw new Error('не удалось подобрать код задания');
+}
+
+async function showTaskList(chatId, msgId, note) {
+    const tasks = await Task.find().sort({ created_at: 1 }).limit(30);
+    let text = "📋 <b>ЗАДАНИЯ</b>" + (note ? `\n<i>${escHtml(note)}</i>` : '') + "\n";
+    const rows = [];
+    if (!tasks.length) text += "\nПока нет заданий.";
+    tasks.forEach((t, i) => {
+        const kind = (TASK_TYPES[t.type] && TASK_TYPES[t.type].short) || TASK_LEGACY_LABEL[t.type] || t.type;
+        text += `\n${i + 1}. ${t.is_active ? '✅' : '⏸'} <b>${escHtml(t.title)}</b> — 💎 ${t.reward} · ${escHtml(kind)}`;
+        rows.push([
+            { text: `🗑 ${i + 1}`, callback_data: 'tdel_' + t._id },
+            { text: `${t.is_active ? '⏸ Выкл' : '▶️ Вкл'} ${i + 1}`, callback_data: 'ttog_' + t._id }
+        ]);
+    });
+    rows.push([{ text: "➕ Создать задание", callback_data: "adm_task_add" }]);
+    rows.push([{ text: "🔙 Назад", callback_data: "admin_menu" }]);
+    const opts = { parse_mode: 'HTML', reply_markup: { inline_keyboard: rows }, disable_web_page_preview: true };
+    if (msgId) {
+        try { await bot.editMessageText(text, { chat_id: chatId, message_id: msgId, ...opts }); return; } catch (e) {
+            if (/not modified/i.test(e.message || '')) return;
+        }
+    }
+    await bot.sendMessage(chatId, text, opts);
+}
+
+async function createTaskFromDraft(chatId, uid, target) {
+    const d = taskDraft[uid];
+    if (!d) return;
+    const code = await makeTaskCode();
+    // create (а не upsert по коду): новое задание НИКОГДА не затирает существующие
+    await Task.create({ code, title: d.title, description: d.desc || '', reward: d.reward, type: d.type, target_value: target, is_active: true });
+    await AdminLog.create({ action: 'task_create', details: `Задание ${code} создано` });
+    delete taskDraft[uid];
+    await showTaskList(chatId, null, `✅ Задание «${d.title}» создано (+${d.reward} 💎).`);
+}
+
+async function handleTaskDraft(msg) {
+    const uid = msg.from.id, chatId = msg.chat.id;
+    const text = (msg.text || '').trim();
+    const d = taskDraft[uid];
+    if (text === '/cancel') { delete taskDraft[uid]; await showTaskList(chatId, null, 'Создание отменено.'); return; }
+    if (!text || text.startsWith('/')) return;
+
+    if (d.step === 'title') {
+        d.title = text.slice(0, 100); d.step = 'desc';
+        await bot.sendMessage(chatId, "Шаг 2/4. Пришли <b>описание</b> (до 300 символов) или <code>-</code>, если без описания.", { parse_mode: 'HTML' });
+    } else if (d.step === 'desc') {
+        d.desc = text === '-' ? '' : text.slice(0, 300); d.step = 'reward';
+        await bot.sendMessage(chatId, "Шаг 3/4. Пришли <b>награду</b> в 💎 (целое число).", { parse_mode: 'HTML' });
+    } else if (d.step === 'reward') {
+        const v = parseInt(text, 10);
+        if (!Number.isFinite(v) || v <= 0 || v > 1e9) { await bot.sendMessage(chatId, "❌ Нужно целое число от 1 до 1 000 000 000."); return; }
+        d.reward = v; d.step = 'type';
+        await bot.sendMessage(chatId, "Шаг 4/4. Выбери <b>тип</b> задания:", { parse_mode: 'HTML', reply_markup: { inline_keyboard: [
+            ...Object.entries(TASK_TYPES).map(([k, t]) => [{ text: t.label, callback_data: 'ttype_' + k }]),
+            [{ text: "❌ Отмена", callback_data: "tcancel" }]
+        ]}});
+    } else if (d.step === 'target') {
+        let target = text;
+        if (d.type === 'channel_sub') {
+            target = text.replace(/^https?:\/\/t\.me\//i, '').replace(/^@/, '');
+            if (!/^[A-Za-z0-9_]{4,32}$/.test(target)) { await bot.sendMessage(chatId, "❌ Нужен @канал, например @my_channel"); return; }
+            target = '@' + target;
+        } else if (d.type === 'link') {
+            if (!/^https?:\/\/\S+$/i.test(text) || text.length > 300) { await bot.sendMessage(chatId, "❌ Нужна ссылка, начинающаяся с https://"); return; }
+        } else if (d.type === 'play_games') {
+            const n = parseInt(text, 10);
+            if (!Number.isFinite(n) || n < 1 || n > 1e6) { await bot.sendMessage(chatId, "❌ Нужно число от 1 до 1 000 000."); return; }
+            target = String(n);
+        }
+        await createTaskFromDraft(chatId, uid, target);
+    }
+}
 
 function adminMenu(chatId) {
     bot.sendMessage(chatId, `👑 **АДМИН-ПАНЕЛЬ VIP ХОТ ТАП**`, {
@@ -50,24 +141,111 @@ function adminMenu(chatId) {
     });
 }
 
+// ===== Карточка игрока в /start: ник, баланс, VIP — обновляется кнопкой и сама =====
+const escHtml = (v) => String(v == null ? '' : v).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+
+function playerNick(u, from) {
+    const un = (u && u.username) || (from && from.username) || '';
+    if (un) return '@' + String(un).replace(/^@/, '');
+    return (u && u.first_name) || (from && from.first_name) || 'Игрок';
+}
+
+function buildStartCard(u, from, isNew) {
+    const vip = u && u.is_vip;
+    const lines = [
+        '💎 <b>VIP ХОТ ТАП</b>',
+        '',
+        `${vip ? '👑 <b>VIP</b>' : '👤 Игрок'}: <b>${escHtml(playerNick(u, from))}</b>`,
+        `💰 Баланс: <b>${formatNumber(Math.floor(u ? u.balance || 0 : 0))} 💎</b>`,
+        `🆔 ID: <code>${escHtml(u ? u.uid : (from && from.id))}</code>`
+    ];
+    if (isNew) lines.push('', `🎁 Стартовый бонус: <b>${CONFIG.START_BALANCE} 💎</b>`);
+    return lines.join('\n');
+}
+
+function startKeyboard(isAdmin) {
+    const kb = [
+        [{ text: "🎰 ВОЙТИ В VIP ЗАЛ", web_app: { url: CONFIG.APP_URL } }],
+        [{ text: "🔄 Обновить баланс", callback_data: "start_refresh" }]
+    ];
+    if (isAdmin) kb.push([{ text: "👑 ПАНЕЛЬ ВЛАДЕЛЬЦА", callback_data: "admin_menu" }]);
+    return { inline_keyboard: kb };
+}
+
+// Карточки, которые держим «живыми»: когда баланс/ник/VIP меняются — сообщение правится само
+const liveCards = new Map(); // uid -> { chatId, msgId, sig, at }
+const LIVE_TTL_MS = 30 * 60 * 1000, LIVE_MAX = 500, LIVE_TICK_MS = 15000;
+const cardSig = (u) => `${Math.floor(u.balance || 0)}|${u.is_vip ? 1 : 0}|${u.username || ''}|${u.first_name || ''}`;
+
+function trackCard(uid, chatId, msgId, u) {
+    if (liveCards.size >= LIVE_MAX && !liveCards.has(uid)) liveCards.delete(liveCards.keys().next().value);
+    liveCards.set(uid, { chatId, msgId, sig: cardSig(u), at: Date.now() });
+}
+
+async function editCard(chatId, msgId, u, from) {
+    try {
+        await bot.editMessageText(buildStartCard(u, from, false), {
+            chat_id: chatId, message_id: msgId, parse_mode: 'HTML',
+            reply_markup: startKeyboard(from && from.id === CONFIG.ADMIN_ID)
+        });
+        return true;
+    } catch (e) {
+        if (/not modified/i.test(e.message || '')) return true;
+        return false; // сообщение удалено/устарело — перестаём его обновлять
+    }
+}
+
+setInterval(async () => {
+    if (!liveCards.size || mongoose.connection.readyState !== 1) return;
+    try {
+        const now = Date.now();
+        for (const [uid, c] of liveCards) if (now - c.at > LIVE_TTL_MS) liveCards.delete(uid);
+        const users = await User.find({ uid: { $in: [...liveCards.keys()] } }).select('uid balance is_vip username first_name').lean();
+        for (const u of users) {
+            const c = liveCards.get(u.uid);
+            if (!c || cardSig(u) === c.sig) continue;
+            const ok = await editCard(c.chatId, c.msgId, u, { id: Number(u.uid) });
+            if (ok) c.sig = cardSig(u); else liveCards.delete(u.uid);
+            await new Promise(r => setTimeout(r, 60));
+        }
+    } catch (e) { console.error('[liveCards]', e.message); }
+}, LIVE_TICK_MS);
+
 bot.onText(/\/start/, async (msg) => {
     const uid = msg.from.id.toString();
     const username = msg.from.username || '';
     const firstName = msg.from.first_name || '';
-    await User.findOneAndUpdate(
-        { uid },
-        { uid, username, first_name: firstName },
-        { upsert: true, setDefaultsOnInsert: true }
-    );
-    let kb = [[{ text: "🎰 ВОЙТИ В VIP ЗАЛ", web_app: { url: CONFIG.APP_URL } }]];
-    if (msg.from.id === CONFIG.ADMIN_ID) kb.push([{ text: "👑 ПАНЕЛЬ ВЛАДЕЛЬЦА", callback_data: "admin_menu" }]);
-    bot.sendMessage(msg.chat.id, `💎 **VIP ХОТ ТАП**\nБонус: **100 💎**\nID: \`${uid}\``, { parse_mode: 'Markdown', reply_markup: { inline_keyboard: kb } });
+    try {
+        const existed = await User.exists({ uid });
+        const u = await User.findOneAndUpdate(
+            { uid },
+            { uid, username, first_name: firstName },
+            { upsert: true, new: true, setDefaultsOnInsert: true }
+        );
+        const sent = await bot.sendMessage(msg.chat.id, buildStartCard(u, msg.from, !existed), {
+            parse_mode: 'HTML', reply_markup: startKeyboard(msg.from.id === CONFIG.ADMIN_ID)
+        });
+        trackCard(uid, msg.chat.id, sent.message_id, u);
+    } catch (e) {
+        console.error('[start]', e.message);
+        bot.sendMessage(msg.chat.id, '⚠️ Не удалось загрузить профиль. Попробуй ещё раз через минуту: /start').catch(() => {});
+    }
 });
 
 bot.on('callback_query', async (q) => {
+    bot.answerCallbackQuery(q.id).catch(() => {}); // убираем «часики» на кнопке
+    if (!q.message) return;
     const uid = q.from.id;
     const chatId = q.message.chat.id;
     const msgId = q.message.message_id;
+
+    if (q.data === 'start_refresh') {
+        try {
+            const u = await User.findOne({ uid: String(uid) }).lean();
+            if (u) { await editCard(chatId, msgId, u, q.from); trackCard(String(uid), chatId, msgId, u); }
+        } catch (e) { console.error('[refresh]', e.message); }
+        return;
+    }
 
     if (q.data.startsWith('withdraw_ok_')) {
         const parts = q.data.split('_');
@@ -173,33 +351,49 @@ bot.on('callback_query', async (q) => {
         return;
     }
 
-    // ===== ЗАДАНИЯ =====
-    if (q.data === "adm_tasks") {
-        const tasks = await Task.find().sort({ created_at: -1 });
-        let text = "📋 **ЗАДАНИЯ**\n\n";
-        if (tasks.length === 0) text += "Нет заданий.";
-        else for (const t of tasks) text += `\n${t.is_active ? "✅" : "❌"} \`${t.code}\` — ${t.title}\n💎 ${t.reward} | Тип: ${t.type}\n`;
-        bot.sendMessage(chatId, text, { parse_mode: 'Markdown', reply_markup: { inline_keyboard: [
-            [{ text: "➕ Создать задание", callback_data: "adm_task_add" }],
-            [{ text: "🗑 Удалить задание", callback_data: "adm_task_del" }],
-            [{ text: "🔙 Назад", callback_data: "admin_menu" }]
-        ]}});
+    // ===== ЗАДАНИЯ (админ) =====
+    if (!/^(adm_task|ttype_|tdel|ttog|tcancel)/.test(q.data)) delete taskDraft[uid];
+
+    if (q.data === "adm_tasks" || q.data === "tcancel") {
+        delete taskDraft[uid];
+        await showTaskList(chatId, msgId);
         return;
     }
-    if (q.data === "adm_task_add") { adminState[uid] = 'task_code'; bot.sendMessage(chatId, "Код задания (например: sub_channel, play_10):"); return; }
-    if (q.data === "adm_task_del") { adminState[uid] = 'task_del'; bot.sendMessage(chatId, "Код задания для удаления:"); return; }
-
-    if (q.data.startsWith("task_type_")) {
-        const type = q.data.replace("task_type_", "");
-        const s = adminState[uid];
-        if (!s || !s.startsWith("task_type_")) return;
-        const parts = s.split("_");
-        const code = parts[2];
-        const title = parts[3];
-        const desc = parts[4];
-        const reward = parseInt(parts[5]);
-        adminState[uid] = `task_target_${code}_${title}_${desc}_${reward}_${type}`;
-        bot.sendMessage(chatId, "Цель задания:\n📢 channel_sub → @канал\n🎰 play_games → количество\n👥 referral → мин. рефералов\n📝 custom → любой текст");
+    if (q.data === "adm_task_add") {
+        delete adminState[uid];
+        taskDraft[uid] = { step: 'title' };
+        bot.sendMessage(chatId, "➕ <b>Новое задание</b>\n\nШаг 1/4. Пришли <b>название</b> задания (до 100 символов).\n\nОтмена: /cancel", { parse_mode: 'HTML' });
+        return;
+    }
+    if (q.data.startsWith("ttype_")) {
+        const d = taskDraft[uid];
+        const type = q.data.slice(6);
+        if (!d || d.step !== 'type' || !TASK_TYPES[type]) return;
+        d.type = type;
+        if (type === 'custom') { await createTaskFromDraft(chatId, uid, ''); return; }
+        d.step = 'target';
+        bot.sendMessage(chatId, TASK_TYPES[type].ask, { parse_mode: 'HTML', disable_web_page_preview: true });
+        return;
+    }
+    if (q.data.startsWith("tdel_")) {
+        const t = await Task.findById(q.data.slice(5)).catch(() => null);
+        if (!t) { await showTaskList(chatId, msgId); return; }
+        bot.sendMessage(chatId, `🗑 Удалить задание <b>${escHtml(t.title)}</b>?\nУ игроков останется отметка «выполнено», награды не отменяются.`, {
+            parse_mode: 'HTML',
+            reply_markup: { inline_keyboard: [[{ text: "✅ Да, удалить", callback_data: "tdelok_" + t._id }, { text: "❌ Нет", callback_data: "adm_tasks" }]] }
+        });
+        return;
+    }
+    if (q.data.startsWith("tdelok_")) {
+        const t = await Task.findByIdAndDelete(q.data.slice(7)).catch(() => null);
+        if (t) await AdminLog.create({ action: 'task_delete', details: `Задание ${t.code} удалено` });
+        await showTaskList(chatId, null, t ? `🗑 Задание «${t.title}» удалено.` : 'Задание уже удалено.');
+        return;
+    }
+    if (q.data.startsWith("ttog_")) {
+        const t = await Task.findById(q.data.slice(5)).catch(() => null);
+        if (t) { t.is_active = !t.is_active; await t.save(); }
+        await showTaskList(chatId, msgId);
         return;
     }
 
@@ -252,6 +446,11 @@ bot.on('callback_query', async (q) => {
 });
 
 bot.on('message', async (msg) => {
+    if (!msg.from) return;
+    if (taskDraft[msg.from.id] && msg.from.id === CONFIG.ADMIN_ID) {
+        try { await handleTaskDraft(msg); } catch (e) { console.error('[task draft]', e.message); bot.sendMessage(msg.chat.id, '⚠️ Ошибка. Попробуй ещё раз или /cancel').catch(() => {}); }
+        return;
+    }
     const s = adminState[msg.from.id];
     if (!s || msg.text?.startsWith('/')) return;
     const uid = msg.from.id;
@@ -383,62 +582,6 @@ bot.on('message', async (msg) => {
             bot.sendMessage(chatId, "🗑 Удалено."); delete adminState[uid];
         }
 
-        // ===== СОЗДАНИЕ ЗАДАНИЯ =====
-        else if (s === 'task_code') {
-            adminState[uid] = `task_title_${msg.text.trim()}`;
-            bot.sendMessage(chatId, "Название задания:");
-        }
-        else if (s.startsWith('task_title_')) {
-            const code = s.split('_')[2];
-            adminState[uid] = `task_desc_${code}_${msg.text}`;
-            bot.sendMessage(chatId, "Описание:");
-        }
-        else if (s.startsWith('task_desc_')) {
-            const parts = s.split('_');
-            const code = parts[2];
-            const title = parts[3];
-            adminState[uid] = `task_reward_${code}_${title}_${msg.text}`;
-            bot.sendMessage(chatId, "Награда в 💎:");
-        }
-        else if (s.startsWith('task_reward_')) {
-            const parts = s.split('_');
-            const code = parts[2];
-            const title = parts[3];
-            const desc = parts[4];
-            const reward = Math.floor(parseFloat(msg.text));
-            adminState[uid] = `task_type_${code}_${title}_${desc}_${reward}`;
-            bot.sendMessage(chatId, "Выберите тип:", { reply_markup: { inline_keyboard: [
-                [{ text: "📢 Подписка", callback_data: "task_type_channel_sub" }],
-                [{ text: "🎰 Игры", callback_data: "task_type_play_games" }],
-                [{ text: "👥 Реферал", callback_data: "task_type_referral" }],
-                [{ text: "📝 Другое", callback_data: "task_type_custom" }]
-            ]}});
-        }
-        else if (s.startsWith('task_target_')) {
-            const parts = s.split('_');
-            const code = parts[2];
-            const title = parts[3];
-            const desc = parts[4];
-            const reward = parseInt(parts[5]);
-            const type = parts[6];
-            const target = msg.text;
-
-            await Task.findOneAndUpdate(
-                { code },
-                { code, title, description: desc, reward, type, target_value: target, is_active: true },
-                { upsert: true }
-            );
-            await AdminLog.create({ action: 'task_create', details: `Задание ${code} создано` });
-            bot.sendMessage(chatId, `✅ Задание \`${code}\` создано!\n\n${title}\n💎 ${reward}\nТип: ${type}`, { parse_mode: 'Markdown' });
-            delete adminState[uid];
-        }
-        else if (s === 'task_del') {
-            const code = msg.text.trim();
-            await Task.deleteOne({ code });
-            await User.updateMany({}, { $pull: { tasks_completed: code } });
-            bot.sendMessage(chatId, `🗑 Задание \`${code}\` удалено.`, { parse_mode: 'Markdown' });
-            delete adminState[uid];
-        }
     } catch (e) { console.error(e); }
 });
 
