@@ -424,10 +424,19 @@ bot.on('callback_query', async (q) => {
         return;
     }
     if (q.data === "adm_wipe_confirm") {
+        // Страховка: перед сбросом отправляем владельцу файл со снимком игроков (для отката)
+        try {
+            const snap = await User.find().select('uid balance spins wins used_promos is_banned ban_reason is_vip tasks_completed').lean();
+            await bot.sendDocument(chatId, Buffer.from(JSON.stringify(snap, null, 1)), {}, { filename: `users_before_reset_${Date.now()}.json`, contentType: 'application/json' });
+        } catch (e) {
+            console.error('[wipe snapshot]', e.message);
+            bot.sendMessage(chatId, "❌ Не удалось сохранить снимок перед сбросом. Сброс отменён.");
+            return;
+        }
+        // Историю операций (Transaction) и записи игроков НЕ удаляем — сбрасываются только игровые показатели
         await User.updateMany({}, { balance: CONFIG.START_BALANCE, spins: 0, wins: 0, used_promos: [], is_banned: false, ban_reason: null, is_vip: false, tasks_completed: [] });
-        await Transaction.deleteMany({});
-        await AdminLog.create({ action: 'wipe_all', details: 'Полный сброс' });
-        bot.sendMessage(chatId, "✅ БАЗА ОБНУЛЕНА!");
+        await AdminLog.create({ action: 'wipe_all', details: 'Сброс балансов (снимок отправлен владельцу, транзакции сохранены)' });
+        bot.sendMessage(chatId, "✅ Балансы сброшены. Снимок до сброса отправлен файлом выше, история транзакций сохранена.");
         return;
     }
 });
@@ -444,7 +453,10 @@ bot.on('message', async (msg) => {
     const chatId = msg.chat.id;
 
     try {
-        if (s === 'set_chance') { state.SETTINGS.winChance = parseFloat(msg.text); bot.sendMessage(chatId, `✅ Шанс: ${msg.text}`); delete adminState[uid]; }
+        if (s === 'set_chance' && !(parseFloat(msg.text) >= 0 && parseFloat(msg.text) <= 1)) { bot.sendMessage(chatId, '❌ Шанс — число от 0 до 1 (например 0.15)'); }
+        else if (s === 'set_mult' && !(parseFloat(msg.text) > 0 && parseFloat(msg.text) <= 1000)) { bot.sendMessage(chatId, '❌ Множитель — число от 0 до 1000'); }
+        else if (s === 'set_minbet' && !(parseInt(msg.text) >= 1 && parseInt(msg.text) <= 1e9)) { bot.sendMessage(chatId, '❌ Мин. ставка — целое число от 1'); }
+        else if (s === 'set_chance') { state.SETTINGS.winChance = parseFloat(msg.text); bot.sendMessage(chatId, `✅ Шанс: ${msg.text}`); delete adminState[uid]; }
         else if (s === 'set_mult') { state.SETTINGS.multiplier = parseFloat(msg.text); bot.sendMessage(chatId, `✅ Икс: ${msg.text}`); delete adminState[uid]; }
         else if (s === 'set_minbet') { state.SETTINGS.minBet = parseInt(msg.text); bot.sendMessage(chatId, `✅ Мин: ${msg.text} 💎`); delete adminState[uid]; }
 

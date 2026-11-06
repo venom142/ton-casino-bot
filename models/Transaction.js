@@ -13,4 +13,8 @@ const transactionSchema = new mongoose.Schema({
     created_at: { type: Date, default: Date.now }
 });
 
+transactionSchema.index({ tx_hash: 1 });
+transactionSchema.index({ uid: 1, created_at: -1 });
+transactionSchema.index({ type: 1, status: 1 });
+
 module.exports = mongoose.model('Transaction', transactionSchema);

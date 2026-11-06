@@ -11,4 +11,6 @@ const promoSchema = new mongoose.Schema({
     created_at: { type: Date, default: Date.now }
 });
 
+promoSchema.index({ code: 1 });
+
 module.exports = mongoose.model('Promo', promoSchema);

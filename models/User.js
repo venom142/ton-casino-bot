@@ -32,4 +32,7 @@ const userSchema = new mongoose.Schema({
     }]
 });
 
+userSchema.index({ uid: 1 });          // поиск игрока по Telegram ID (не unique: в базе могут быть дубли)
+userSchema.index({ balance: -1 });     // таблица лидеров
+
 module.exports = mongoose.model('User', userSchema);
