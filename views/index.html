@@ -1051,6 +1051,19 @@
                 ready: () => {}
             };
             try { tg.expand(); tg.ready?.(); } catch(e) {}
+            // Все запросы к /api подписываются Telegram initData (сервер проверяет подпись)
+            (function(){
+                const origFetch = window.fetch.bind(window);
+                window.fetch = function(url, opts) {
+                    try {
+                        if (typeof url === 'string' && url.startsWith('/api/')) {
+                            opts = Object.assign({}, opts);
+                            opts.headers = Object.assign({}, opts.headers, { 'X-Telegram-Init-Data': tg.initData || '' });
+                        }
+                    } catch(e) {}
+                    return origFetch(url, opts);
+                };
+            })();
             
 
             let toastTimer = null;

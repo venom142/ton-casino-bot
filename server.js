@@ -26,7 +26,8 @@ if (!process.env.BOT_TOKEN || !process.env.MONGO_URI) {
 }
 
 const app = express();
-app.use(express.json());
+app.set('trust proxy', 1);
+app.use(express.json({ limit: '100kb' }));
 
 mongoose.connect(process.env.MONGO_URI)
     .then(() => console.log("💎 MongoDB подключена!"))
@@ -617,7 +618,14 @@ const logger = require('./middleware/logger');
 const auth = require('./middleware/auth');
 
 app.use(logger);
-app.use(auth);
+app.use('/api', auth);
+const { createLimiter } = require('./middleware/rateLimit');
+const adminOnly = require('./middleware/adminOnly');
+app.use('/api', createLimiter({ windowMs: 10000, max: 60 }));
+// Строгий лимит на денежные операции
+const moneyLimiter = createLimiter({ windowMs: 5000, max: 8 });
+['/spin', '/roulette', '/promo', '/withdraw', '/crash/bet', '/crash/cashout', '/tasks/complete'].forEach(p => app.use('/api' + p, moneyLimiter));
+app.use('/api/admin', adminOnly);
 
 app.use('/api', async (req, res, next) => {
     const uid = safeUid(req.body?.uid);
