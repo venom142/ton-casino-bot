@@ -36,6 +36,22 @@ mongoose.connect(process.env.MONGO_URI)
     .catch(err => console.error("❌ Ошибка БД:", err.message));
 
 const bot = new TelegramBot(process.env.BOT_TOKEN, { polling: true });
+
+// 409 Conflict возникает, когда при деплое на секунду работают старый и новый экземпляр — само проходит.
+let last409 = 0;
+bot.on('polling_error', (err) => {
+    const m = String(err && err.message || err);
+    if (m.includes('409')) {
+        if (Date.now() - last409 > 60000) { last409 = Date.now(); console.warn('[polling] 409: параллельный экземпляр бота (обычно при деплое), ждём'); }
+        return;
+    }
+    console.error('[polling_error]', m);
+});
+// Мягкое завершение при деплое: перестаём опрашивать Telegram, чтобы новый экземпляр не конфликтовал
+process.on('SIGTERM', async () => {
+    try { if (bot.stopPolling) await bot.stopPolling(); } catch (e) {}
+    process.exit(0);
+});
 const adminState = {};
 const taskDraft = {}; // admin uid -> { step, title, desc, reward, type }
 
