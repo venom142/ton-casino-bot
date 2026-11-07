@@ -66,7 +66,7 @@ module.exports = (bot) => {
         try {
             const { text, delay_minutes, filter } = req.body;
             const delay = Math.floor(Number(delay_minutes));
-            if (!text || !delay || delay < 1) return res.json({ err: "Некорректные данные" });
+            if (!text || !delay || delay < 1 || delay > 10080) return res.json({ err: "Некорректные данные" });
 
             const id = Date.now().toString();
             state.BROADCAST_QUEUE.push({ id, text, filter, fireAt: Date.now() + delay * 60000 });

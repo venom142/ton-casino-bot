@@ -62,7 +62,7 @@ module.exports = (bot, CONFIG) => {
                 const finishedCrashPoint = Number(crashState.crashPoint || crashState.crashedMultiplier || 1);
                 if (!Number.isNaN(finishedCrashPoint) && finishedCrashPoint >= 1) {
                     crashState.history.unshift(Number(finishedCrashPoint.toFixed(2)));
-                    crashState.history = [...new Set(crashState.history.map(x => Number(x)))].slice(0, 12);
+                    crashState.history = crashState.history.slice(0, 12);
                 }
                 sendCrashRoundReport();
                 setTimeout(() => {

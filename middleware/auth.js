@@ -1,4 +1,5 @@
 const User = require('../models/User');
+const Ban = require('../models/Ban');
 const { verifyInitData } = require('../utils/telegramAuth');
 
 // Публичные маршруты (без входа): проверка техработ
@@ -20,6 +21,13 @@ module.exports = async (req, res, next) => {
     try {
         const user = await User.findOne({ uid }).select('is_banned ban_reason balance').lean();
         if (user && user.is_banned) {
+            // Временный бан: если срок вышел — снимаем автоматически
+            const ban = await Ban.findOne({ uid }).sort({ created_at: -1 }).lean();
+            if (ban && ban.expires_at && new Date(ban.expires_at) <= new Date()) {
+                await User.updateOne({ uid }, { $set: { is_banned: false, ban_reason: null } });
+                await Ban.deleteMany({ uid });
+                return next();
+            }
             if (req.path === '/sync') {
                 return res.json({ is_banned: true, ban_reason: user.ban_reason || 'Нарушение правил', balance: user.balance || 0 });
             }

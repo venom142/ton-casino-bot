@@ -10,7 +10,7 @@ const state = require('./state');
 const User = require('./models/User');
 const Promo = require('./models/Promo');
 const Transaction = require('./models/Transaction');
-const { approveWithdraw, rejectWithdraw } = require('./utils/wallet');
+const { approveWithdraw, rejectWithdraw, adminAdjust } = require('./utils/wallet');
 const { scanDeposits } = require('./utils/deposits');
 const AdminLog = require('./models/AdminLog');
 const Ban = require('./models/Ban');
@@ -29,6 +29,7 @@ if (!process.env.BOT_TOKEN || !process.env.MONGO_URI) {
 
 const app = express();
 app.set('trust proxy', 1);
+app.disable('x-powered-by');
 app.use(express.json({ limit: '100kb' }));
 
 mongoose.connect(process.env.MONGO_URI)
@@ -53,6 +54,8 @@ process.on('SIGTERM', async () => {
     process.exit(0);
 });
 const adminState = {};
+const adminData = {}; // admin uid -> данные шага (вместо кодирования в строке состояния: '_' в тексте/URL/коде ломал разбор)
+const escRe = (v) => String(v).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 const taskDraft = {}; // admin uid -> { step, title, desc, reward, type }
 
 // Типы заданий: что просим у админа и как называем
@@ -230,7 +233,8 @@ setInterval(async () => {
     } catch (e) { console.error('[liveCards]', e.message); }
 }, LIVE_TICK_MS);
 
-bot.onText(/\/start/, async (msg) => {
+bot.onText(/^\/start(?:@\w+)?(?:\s|$)/, async (msg) => {
+    if (msg.chat.type !== 'private') return; // web_app-кнопки работают только в личке
     const uid = msg.from.id.toString();
     const username = msg.from.username || '';
     const firstName = msg.from.first_name || '';
@@ -252,6 +256,13 @@ bot.onText(/\/start/, async (msg) => {
 });
 
 bot.on('callback_query', async (q) => {
+    try { await handleCallback(q); } catch (e) {
+        console.error('[callback]', q && q.data, e.message);
+        if (q && q.message) bot.sendMessage(q.message.chat.id, '⚠️ Ошибка. Попробуйте ещё раз.').catch(() => {});
+    }
+});
+
+async function handleCallback(q) {
     bot.answerCallbackQuery(q.id).catch(() => {}); // убираем «часики» на кнопке
     if (!q.message) return;
     const uid = q.from.id;
@@ -455,7 +466,7 @@ bot.on('callback_query', async (q) => {
         bot.sendMessage(chatId, "✅ Балансы сброшены. Снимок до сброса отправлен файлом выше, история транзакций сохранена.");
         return;
     }
-});
+}
 
 bot.on('message', async (msg) => {
     if (!msg.from) return;
@@ -479,7 +490,7 @@ bot.on('message', async (msg) => {
         else if (s === 'search_id') {
             let user;
             if (/^\d+$/.test(msg.text)) user = await User.findOne({ uid: msg.text });
-            else user = await User.findOne({ username: { $regex: msg.text.replace('@',''), $options: 'i' } });
+            else user = await User.findOne({ username: { $regex: '^' + escRe(msg.text.replace('@','').trim()) + '$', $options: 'i' } });
             if (!user) bot.sendMessage(chatId, "❌ Не найден.");
             else {
                 const banStatus = user.is_banned ? `🚫 ЗАБАНЕН: ${user.ban_reason || 'Нет'}` : '✅ Активен';
@@ -487,30 +498,29 @@ bot.on('message', async (msg) => {
             }
             delete adminState[uid];
         }
-        else if (s === 'give_bal_id') { adminState[uid] = `give_bal_v_${msg.text}`; bot.sendMessage(chatId, "Сумма (можно отрицательную):"); }
-        else if (s.startsWith('give_bal_v_')) {
-            const targetUid = s.split('_')[3];
+        else if (s === 'give_bal_id') { adminData[uid] = { target: msg.text.trim() }; adminState[uid] = 'give_bal_v'; bot.sendMessage(chatId, "Сумма (можно отрицательную):"); }
+        else if (s === 'give_bal_v') {
+            const targetUid = (adminData[uid] || {}).target;
             const amount = Math.floor(parseFloat(msg.text));
-            const user = await User.findOne({ uid: targetUid });
+            if (!targetUid || !Number.isFinite(amount) || Math.abs(amount) > 1e9) { bot.sendMessage(chatId, "❌ Нужна сумма — целое число."); return; }
+            const user = await adminAdjust(targetUid, amount, amount >= 0 ? `👑 Админ +${amount} 💎` : `👑 Админ ${amount} 💎`);
             if (user) {
-                user.balance += amount; if (user.balance < 0) user.balance = 0;
-                addHistory(user, amount >= 0 ? `👑 Админ +${amount} 💎` : `👑 Админ ${amount} 💎`, amount);
-                await user.save();
                 await AdminLog.create({ action: amount >= 0 ? 'balance_add' : 'balance_remove', target_uid: targetUid, amount });
                 bot.sendMessage(chatId, `✅ Баланс: ${user.balance} 💎`);
                 bot.sendMessage(targetUid, amount >= 0 ? `🎁 Админ +${amount} 💎` : `⚠️ Админ ${amount} 💎`).catch(()=>{});
-            }
-            delete adminState[uid];
+            } else bot.sendMessage(chatId, "❌ Игрок не найден.");
+            delete adminState[uid]; delete adminData[uid];
         }
-        else if (s === 'ban_id') { adminState[uid] = `ban_r_${msg.text}`; bot.sendMessage(chatId, "Причина:"); }
-        else if (s.startsWith('ban_r_')) {
-            const targetUid = s.split('_')[2];
-            await User.findOneAndUpdate({ uid: targetUid }, { is_banned: true, ban_reason: msg.text });
+        else if (s === 'ban_id') { adminData[uid] = { target: msg.text.trim() }; adminState[uid] = 'ban_r'; bot.sendMessage(chatId, "Причина:"); }
+        else if (s === 'ban_r') {
+            const targetUid = (adminData[uid] || {}).target;
+            const banned = targetUid && await User.findOneAndUpdate({ uid: targetUid }, { is_banned: true, ban_reason: msg.text });
+            if (!banned) { bot.sendMessage(chatId, "❌ Игрок не найден."); delete adminState[uid]; delete adminData[uid]; return; }
             await Ban.create({ uid: targetUid, reason: msg.text, banned_by: 'admin' });
             await AdminLog.create({ action: 'ban', target_uid: targetUid, details: msg.text });
             bot.sendMessage(targetUid, `🚫 Забанены.\nПричина: ${msg.text}`).catch(()=>{});
             bot.sendMessage(chatId, `✅ ${targetUid} забанен.`);
-            delete adminState[uid];
+            delete adminState[uid]; delete adminData[uid];
         }
         else if (s === 'unban_id') {
             await User.findOneAndUpdate({ uid: msg.text }, { is_banned: false, ban_reason: null });
@@ -538,36 +548,31 @@ bot.on('message', async (msg) => {
             bot.sendMessage(chatId, `✅ ${sent}\n❌ ${failed}`);
             delete adminState[uid];
         }
-        else if (s === 'bc_photo_url') { adminState[uid] = `bc_photo_c_${msg.text}`; bot.sendMessage(chatId, "Подпись:"); }
-        else if (s.startsWith('bc_photo_c_')) {
-            const url = s.split('_')[3];
+        else if (s === 'bc_photo_url') { adminData[uid] = { url: msg.text.trim() }; adminState[uid] = 'bc_photo_c'; bot.sendMessage(chatId, "Подпись:"); }
+        else if (s === 'bc_photo_c') {
+            const url = (adminData[uid] || {}).url;
+            if (!/^https?:\/\/\S+$/i.test(url || '')) { bot.sendMessage(chatId, "❌ Нужна ссылка на фото (https://…)."); delete adminState[uid]; delete adminData[uid]; return; }
             const users = await User.find();
             let sent = 0;
             for (const u of users) { try { await bot.sendPhoto(u.uid, url, { caption: msg.text }); sent++; } catch(e) {} }
-            bot.sendMessage(chatId, `✅ ${sent}`); delete adminState[uid];
+            bot.sendMessage(chatId, `✅ ${sent}`); delete adminState[uid]; delete adminData[uid];
         }
-        else if (s === 'bc_btn_text') { adminState[uid] = `bc_btn_t_${msg.text}`; bot.sendMessage(chatId, "Текст кнопки:"); }
-        else if (s.startsWith('bc_btn_t_')) {
-            const btnText = msg.text;
-            const text = s.split('_').slice(3).join('_');
-            adminState[uid] = `bc_btn_u_${text}_${btnText}`;
-            bot.sendMessage(chatId, "URL кнопки:");
-        }
-        else if (s.startsWith('bc_btn_u_')) {
-            const parts = s.split('_');
-            const btnUrl = msg.text;
-            const btnText = parts[4];
-            const text = parts[3];
-            const users = await User.find();
+        else if (s === 'bc_btn_text') { adminData[uid] = { text: msg.text }; adminState[uid] = 'bc_btn_t'; bot.sendMessage(chatId, "Текст кнопки:"); }
+        else if (s === 'bc_btn_t') { adminData[uid].btnText = msg.text; adminState[uid] = 'bc_btn_u'; bot.sendMessage(chatId, "URL кнопки:"); }
+        else if (s === 'bc_btn_u') {
+            const { text, btnText } = adminData[uid] || {};
+            const btnUrl = msg.text.trim();
+            if (!text || !btnText || !/^https?:\/\/\S+$/i.test(btnUrl)) { bot.sendMessage(chatId, "❌ Нужна ссылка, начинающаяся с https://"); return; }
+            const users = await User.find().select('uid').lean();
             let sent = 0;
             for (const u of users) { try { await bot.sendMessage(u.uid, text, { reply_markup: { inline_keyboard: [[{ text: btnText, url: btnUrl }]] } }); sent++; } catch(e) {} }
-            bot.sendMessage(chatId, `✅ ${sent}`); delete adminState[uid];
+            bot.sendMessage(chatId, `✅ ${sent}`); delete adminState[uid]; delete adminData[uid];
         }
-        else if (s === 'bc_sched_text') { adminState[uid] = `bc_sched_d_${msg.text}`; bot.sendMessage(chatId, "Через сколько минут?"); }
-        else if (s.startsWith('bc_sched_d_')) {
-            const text = s.split('_').slice(3).join('_');
+        else if (s === 'bc_sched_text') { adminData[uid] = { text: msg.text }; adminState[uid] = 'bc_sched_d'; bot.sendMessage(chatId, "Через сколько минут?"); }
+        else if (s === 'bc_sched_d') {
+            const text = (adminData[uid] || {}).text;
             const delay = Math.floor(parseFloat(msg.text));
-            if (!delay || delay < 1) { bot.sendMessage(chatId, "❌ Некорректно."); delete adminState[uid]; return; }
+            if (!text || !delay || delay < 1 || delay > 10080) { bot.sendMessage(chatId, "❌ Укажите число минут от 1 до 10080."); return; }
             const id = Date.now().toString();
             state.BROADCAST_QUEUE.push({ id, text, fireAt: Date.now() + delay * 60000 });
             setTimeout(async () => {
@@ -576,19 +581,27 @@ bot.on('message', async (msg) => {
                 const users = await User.find();
                 for (const u of users) { try { await bot.sendMessage(u.uid, text); } catch(e) {} }
             }, delay * 60000);
-            bot.sendMessage(chatId, `✅ Через ${delay} мин.`); delete adminState[uid];
+            bot.sendMessage(chatId, `✅ Через ${delay} мин.`); delete adminState[uid]; delete adminData[uid];
         }
 
-        else if (s === 'p_code') { adminState[uid] = `p_val_${msg.text.trim().toUpperCase()}`; bot.sendMessage(chatId, "Сумма:"); }
-        else if (s.startsWith('p_val_')) { adminState[uid] = `p_lim_${s.split('_')[2]}_${Math.floor(parseFloat(msg.text))}`; bot.sendMessage(chatId, "Лимит:"); }
-        else if (s.startsWith('p_lim_')) {
-            const code = s.split('_')[2];
-            const val = Math.floor(parseFloat(s.split('_')[3]));
-            const limit = parseInt(msg.text);
+        else if (s === 'p_code') {
+            const code = msg.text.trim().toUpperCase();
+            if (!/^[A-Z0-9_\-]{2,32}$/.test(code)) { bot.sendMessage(chatId, "❌ Код: 2–32 символа, латиница, цифры, _ и -."); return; }
+            adminData[uid] = { code }; adminState[uid] = 'p_val'; bot.sendMessage(chatId, "Сумма:");
+        }
+        else if (s === 'p_val') {
+            const val = Math.floor(parseFloat(msg.text));
+            if (!(val > 0 && val <= 1e9)) { bot.sendMessage(chatId, "❌ Сумма — целое число больше 0."); return; }
+            adminData[uid].val = val; adminState[uid] = 'p_lim'; bot.sendMessage(chatId, "Лимит:");
+        }
+        else if (s === 'p_lim') {
+            const { code, val } = adminData[uid] || {};
+            const limit = parseInt(msg.text, 10);
+            if (!code || !(limit > 0 && limit <= 1e9)) { bot.sendMessage(chatId, "❌ Лимит — целое число больше 0."); return; }
             await Promo.findOneAndUpdate({ code }, { code, value: val, limit, usedCount: 0 }, { upsert: true });
             await User.updateMany({}, { $pull: { used_promos: code } });
             bot.sendMessage(chatId, `✅ \`${code}\` — ${val} 💎 | ${limit}`, { parse_mode: 'Markdown' });
-            delete adminState[uid];
+            delete adminState[uid]; delete adminData[uid];
         }
         else if (s === 'p_del') {
             const delCode = msg.text.trim().toUpperCase();
@@ -597,7 +610,11 @@ bot.on('message', async (msg) => {
             bot.sendMessage(chatId, "🗑 Удалено."); delete adminState[uid];
         }
 
-    } catch (e) { console.error(e); }
+    } catch (e) {
+        console.error('[admin msg]', e.message);
+        bot.sendMessage(chatId, "❌ Ошибка выполнения. Попробуйте ещё раз.").catch(() => {});
+        delete adminState[uid]; delete adminData[uid];
+    }
 });
 
 // ==========================================
@@ -621,10 +638,26 @@ const moneyLimiter = createLimiter({ windowMs: 5000, max: 8 });
 ['/spin', '/roulette', '/promo', '/withdraw', '/crash/bet', '/crash/cashout', '/tasks/complete'].forEach(p => app.use('/api' + p, moneyLimiter));
 app.use('/api/admin', adminOnly);
 
-app.use('/api', async (req, res, next) => {
+// Техперерыв: денежные/игровые операции блокируются на сервере (не только оверлеем на фронте)
+const MAINT_BLOCKED = new Set(['/spin', '/roulette', '/promo', '/withdraw', '/crash/bet', '/crash/cashout', '/tasks/complete']);
+app.use('/api', (req, res, next) => {
+    if (state.MAINTENANCE_MODE && MAINT_BLOCKED.has(req.path) && !(req.tgUser && Number(req.tgUser.id) === Number(CONFIG.ADMIN_ID))) {
+        return res.json({ err: "🛠 Технический перерыв. Скоро вернёмся!" });
+    }
+    next();
+});
+
+// last_active: не чаще раза в минуту на игрока и без падения запроса при ошибке БД
+const lastTouch = new Map();
+app.use('/api', (req, res, next) => {
     const uid = safeUid(req.body?.uid);
-    if (uid) {
-        await User.updateOne({ uid }, { last_active: Date.now(), notified_inactive: false }, { strict: false });
+    if (uid && req.path !== '/crash/state') {
+        const now = Date.now();
+        if (now - (lastTouch.get(uid) || 0) > 60000) {
+            lastTouch.set(uid, now);
+            if (lastTouch.size > 20000) lastTouch.clear();
+            User.updateOne({ uid }, { last_active: now, notified_inactive: false }, { strict: false }).catch(e => console.error('[last_active]', e.message));
+        }
     }
     next();
 });
@@ -654,6 +687,7 @@ app.use('/api', require('./routes/admin/backup')());
 // 🛡 ОБРАБОТКА ОШИБОК
 // ==========================================
 app.use((err, req, res, next) => {
+    if (err && err.type === 'entity.parse.failed') return res.status(400).json({ err: "Некорректный запрос" });
     console.error("[ERROR]", err.stack || err);
     res.status(500).json({ err: "Internal Server Error" });
 });

@@ -45,4 +45,11 @@ async function rejectWithdraw(txId) {
     return { ok: true, tx };
 }
 
-module.exports = { histEntry, debit, credit, approveWithdraw, rejectWithdraw };
+// Админская корректировка баланса: атомарно ($inc), не ниже нуля
+async function adminAdjust(uid, amt, text) {
+    const u = await User.findOneAndUpdate({ uid }, { $inc: { balance: amt }, $push: { history: histEntry(text, amt) } }, { new: true });
+    if (u && u.balance < 0) { await User.updateOne({ uid, balance: { $lt: 0 } }, { $set: { balance: 0 } }); u.balance = 0; }
+    return u;
+}
+
+module.exports = { adminAdjust, histEntry, debit, credit, approveWithdraw, rejectWithdraw };

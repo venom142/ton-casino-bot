@@ -3,20 +3,22 @@ const router = express.Router();
 const User = require('../../models/User');
 const Ban = require('../../models/Ban');
 const AdminLog = require('../../models/AdminLog');
-const { addHistory, safeUid } = require('../../utils/helpers');
+const { safeUid } = require('../../utils/helpers');
+const { adminAdjust } = require('../../utils/wallet');
+const escRe = (v) => String(v).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 
 module.exports = (bot) => {
     // Поиск пользователя
     router.post('/admin/users/search', async (req, res) => {
         try {
-            const { query } = req.body;
+            const query = String((req.body && req.body.query) || '').trim().replace(/^@/, '').slice(0, 64);
             if (!query) return res.json({ err: "Введите ID или username" });
 
             let user;
             if (/^\d+$/.test(query)) {
                 user = await User.findOne({ uid: query });
             } else {
-                user = await User.findOne({ username: { $regex: query, $options: 'i' } });
+                user = await User.findOne({ username: { $regex: '^' + escRe(query) + '$', $options: 'i' } });
             }
 
             if (!user) return res.json({ err: "Игрок не найден" });
@@ -48,15 +50,9 @@ module.exports = (bot) => {
             const amt = Math.floor(Number(amount));
             if (!uidStr || isNaN(amt)) return res.json({ err: "Ошибка данных" });
 
-            const user = await User.findOne({ uid: uidStr });
-            if (!user) return res.json({ err: "Игрок не найден" });
-
-            user.balance += amt;
-            if (user.balance < 0) user.balance = 0;
-
             const actionText = amt >= 0 ? `👑 Админ +${amt} 💎` : `👑 Админ ${amt} 💎`;
-            addHistory(user, actionText, amt);
-            await user.save();
+            const user = await adminAdjust(uidStr, amt, actionText); // атомарно, без перезаписи параллельных операций
+            if (!user) return res.json({ err: "Игрок не найден" });
 
             await AdminLog.create({
                 action: amt >= 0 ? 'balance_add' : 'balance_remove',
@@ -96,7 +92,8 @@ module.exports = (bot) => {
             );
             if (!user) return res.json({ err: "Игрок не найден" });
 
-            const expires = duration ? new Date(Date.now() + duration * 86400000) : null;
+            const days = Number(duration);
+            const expires = (Number.isFinite(days) && days > 0 && days <= 3650) ? new Date(Date.now() + days * 86400000) : null;
             await Ban.create({ uid: uidStr, reason: reason || 'Нарушение правил', banned_by: 'admin', expires_at: expires });
             await AdminLog.create({ action: 'ban', target_uid: uidStr, details: reason });
 
